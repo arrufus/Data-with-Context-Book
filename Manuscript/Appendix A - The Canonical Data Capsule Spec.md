@@ -113,7 +113,7 @@ certification_ref: certs/client_holdings.yaml   # -> Appendix C
 ### Kind-specific extensions
 
 - **`kind: training_dataset`** adds a `snapshot` block (pinned source + immutable snapshot id), a per-feature `lawful_basis` and `permits_automated_decision` flag, a `labels` block (target, provenance, known bias), and `quality_baselines` for drift monitoring. (Chapter 7.)
-- **`kind: document_capsule`** replaces `schema` with `source` (uri + content hash), a `lifecycle` block carrying `effective_from`/`effective_to`/`superseded_by`, and a `retrieval` block (chunking strategy, embedding-model version, index). (Chapter 8A.)
+- **`kind: document_capsule`** replaces `schema` with `source` (uri + content hash), a `lifecycle` block carrying `effective_from`/`effective_to`/`superseded_by`, and a `retrieval` block (chunking strategy, embedding-model version, index). (Chapter 9.)
 - **`kind: stream`** adds registry `compatibility_mode` (backward|forward|full) and a topic/offset lineage anchor. (Chapter 7.)
 
 ---
@@ -165,7 +165,8 @@ Drop this in `schemas/capsule.schema.json` and validate every spec in CI (`capsu
       "required": ["domain", "product_owner"],
       "properties": {
         "domain": { "type": "string" },
-        "product_owner": { "type": "string", "format": "email" }
+        "product_owner": { "type": "string", "format": "email",
+                           "pattern": "^[^@\\s]+@[^@\\s]+$" }
       }
     },
     "datasets": {
@@ -199,11 +200,14 @@ Drop this in `schemas/capsule.schema.json` and validate every spec in CI (`capsu
     "lifecycle": {
       "type": "object",
       "properties": {
-        "status": { "enum": ["draft","review","published","deprecated","retired"] }
+        "status": {
+          "enum": ["draft","review","published","deprecated","retired",
+                   "superseded","withdrawn"]
+        }
       }
     }
   }
 }
 ```
 
-Note the small but load-bearing constraints: `product_owner` must be an email (a *person*, not a team), every field's `description` must be non-empty (no undocumented columns), and every dataset must declare a `grain` and a `classification`. These are the machine-checkable floor beneath "no orphan, no undocumented, no unclassified data." Content validation beyond the schema — that `owner` is not the string `"TBD"`, that a semantic rule exists for a division-dependent field — runs as additional CI checks (Chapter 9), because a schema can enforce *presence* but not *meaning*.
+The lifecycle enum carries the *union* of the table-capsule states (`draft…retired`) and the document-capsule states (`superseded`, `withdrawn`, from Chapter 9), so a document capsule validates against the same schema; a stricter deployment can make the enum kind-aware with an `if`/`then` branch on `kind: document_capsule`. Note also the small but load-bearing constraints: `product_owner` must match an email pattern (a *person*, not a team — `format: email` alone is annotation-only under most validators, so the `pattern` makes the floor actually bear load), every field's `description` must be non-empty (no undocumented columns), and every dataset must declare a `grain` and a `classification`. These are the machine-checkable floor beneath "no orphan, no undocumented, no unclassified data." Content validation beyond the schema — that `owner` is not the string `"TBD"`, that a semantic rule exists for a division-dependent field — runs as additional CI checks (Chapter 10), because a schema can enforce *presence* but not *meaning*.

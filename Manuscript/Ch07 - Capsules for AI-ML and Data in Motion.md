@@ -8,7 +8,7 @@
 
 Maya's worst meeting happened in a glass-walled room on the fourth floor, and it lasted eleven minutes. Meridian's first production model that touched clients — a suitability-and-eligibility scorer her team had supplied half the features for — was up for review by the model-risk committee. She had her dashboards. She had her quality metrics. She had diagrams. Then the head of model risk read a question off her notes, slowly, in the voice of someone who already knew the answer would not come: *"Maya, of the seventy-three features this model consumes, which were sourced under a lawful basis that includes automated decision-making, and which were not?"*
 
-Maya knew which catalog to look in. She knew the consent register existed somewhere in the privacy team's SharePoint. She knew her engineers could probably trace it given a week or two. What she could not do was answer the question in the room, or know whether the answer today matched the answer six months ago when the model was trained. She said, "I'll come back to you on that." The committee paused the model. Six months of engineering, three vendors, two regulatory submissions, and a head of data's reputation — paused. Not because the data was bad. Because the data could not produce evidence about itself.
+Maya knew which catalogue to look in. She knew the consent register existed somewhere in the privacy team's SharePoint. She knew her engineers could probably trace it given a week or two. What she could not do was answer the question in the room, or know whether the answer today matched the answer six months ago when the model was trained. She said, "I'll come back to you on that." The committee paused the model. Six months of engineering, three vendors, two regulatory submissions, and a head of data's reputation — paused. Not because the data was bad. Because the data could not produce evidence about itself.
 
 That is the difference this chapter is about. The data feeding Meridian's model was, by every measure the team tracked, fine: complete, accurate, fresh, statistically well-behaved. It passed every quality gate it was asked to pass. What it could not do was answer, on demand, the questions an AI workload and its regulators actually ask — about meaning, lineage, lawful basis, and what the data looked like on the specific day a model trained on it. Batch tables at rest, governed as capsules, are necessary but not sufficient. The capsule discipline has to extend into the places where ML data actually lives: training snapshots, feature stores, and streams in motion. Those workloads have different constraints and higher consequences, and most MLOps tooling does not cover the gap.
 
@@ -18,7 +18,7 @@ Ask an ML team basic questions about a production model — what data trained it
 
 Feature-engineering logic scatters across notebooks, SQL scripts, Spark jobs, and ad-hoc Python. There is rarely a single source of truth for what a feature means or how it is computed. Reproducibility becomes aspirational: "just re-run the training notebook" does not work when the upstream tables have changed, the feature definitions have drifted, or someone quietly fixed a transformation bug three months ago. When a model misbehaves in production, debugging means tracing back through data that may no longer exist in its original form. When a regulator asks about bias, the team scrambles to reconstruct what data influenced what decisions.
 
-Tools like MLflow, Weights & Biases, Kubeflow, and SageMaker do an excellent job — on the *model* side. They track experiments, model versions, hyperparameters, deployment metadata. But they track the model side of the equation. The data side stays underserved, and the data side is where Maya's eleven-minute meeting went wrong. Data Capsules fill that gap by bringing the same versioning, lineage, and governance discipline to training data and features that Chapters 5 and 6 brought to analytical tables.
+Tools like MLflow, Weights & Biases, Kubeflow, and SageMaker do an excellent job — on the *model* side. They track experiments, model versions, hyperparameters, deployment metadata. They track the model side deeply and the data side thinly: recent versions log dataset references, but not the bound semantics, policy, and pinned lineage a capsule carries. The data side stays underserved, and it is where Maya's eleven-minute meeting went wrong. Data Capsules fill that gap by bringing the same versioning, lineage, and governance discipline to training data and features that Chapters 5 and 6 brought to analytical tables.
 
 ## Training data as a capsule
 
@@ -69,15 +69,15 @@ labels:
   known_bias: "under-represents execution-only clients"
 
 quality_baselines:                       # the drift monitor's reference
-  em_exposure_pct: { mean: 12.4, p95: 41.0, null_rate: 0.001 }
-  client_tenure_months: { mean: 63, null_rate: 0.0 }
+  em_exposure_pct: { mean: 12.4, std: 9.2, p95: 41.0, null_rate: 0.001 }
+  client_tenure_months: { mean: 63, std: 18, null_rate: 0.0 }
 
 policy:
   retention: P7Y
   approved_uses: [suitability_model_training, eligibility_model_training]
 ```
 
-Everything the eleven-minute meeting needed is in this file. "Which features were sourced under a basis that permits automated decisions?" is now a filter over `features[].permits_automated_decision`, returning an answer in the room. The snapshot is pinned and immutable, so "what data trained model v2.3?" resolves to an exact, retrievable state, not whatever the table looks like today. And the `quality_baselines` block is the reference the production drift monitor compares live inference against — which is where this chapter goes next.
+Everything the eleven-minute meeting needed is in this file. Note that the manifest carries two fields per feature, not one: the Article 6 lawful basis under which the feature was sourced, and — separately — whether that sourcing supports use in an *automated* decision under Article 22. The committee's question fuses the two; the evidence has to keep them distinct, which is exactly why the capsule records both rather than collapsing them into a single "consented" flag. "Which features were sourced under a basis that permits automated decisions?" is then a filter over `features[].permits_automated_decision`, returning an answer in the room. The snapshot is pinned and immutable, so "what data trained model v2.3?" resolves to an exact, retrievable state, not whatever the table looks like today. And the `quality_baselines` block is the reference the production drift monitor compares live inference against — which is where this chapter goes next.
 
 ## Feature stores through the capsule lens
 
@@ -112,15 +112,15 @@ client_activity = FeatureView(
 )
 ```
 
-The three additions are the whole point. The **policy tag** on `income_band` (`approval_required: credit_use`) is the control that stops a credit-eligibility model from silently consuming a sensitive feature without sign-off — policy travelling with the feature, not filed elsewhere. The **gate test** tags mean a feature whose distribution drifts is *quarantined from serving*, not served degraded. And declaring **`online=True, offline=True` against one definition** is the capsule enforcing online/offline consistency: both serving paths honour the same schema, semantics, and quality, so training and inference cannot silently diverge into two things wearing one name. A feature store gives you the container; capsule discipline fills in the policy, the gates, and the contract that make the container trustworthy.
+The three additions are the whole point. The **policy tag** on `income_band` (`approval_required: credit_use`) is the control that stops a credit-eligibility model from silently consuming a sensitive feature without sign-off — policy travelling with the feature, not filed elsewhere. The **gate test** tags mean a feature whose distribution drifts is *quarantined from serving*, not served degraded. And declaring **`online=True, offline=True` against one definition** is the capsule enforcing online/offline consistency: both serving paths honour the same schema, semantics, and quality, so training and inference cannot silently fork. A feature store gives you the container; capsule discipline fills in the policy, the gates, and the contract that make the container trustworthy.
 
 ## Model governance and the data side of MLOps
 
-Model cards have become the standard way to document a model — intended use, performance, limitations, ethical considerations. But model cards typically treat training data as a black box. "Trained on client transaction data" is not enough for serious governance, and it is certainly not enough for the model-risk committee that paused Maya's model.
+Model cards have become the standard way to document a model — intended use, performance, limitations, ethical considerations. But model cards typically treat training data as a black box. "Trained on client transaction data" is not enough for serious governance, and it is certainly not enough for the model-risk committee that paused Maya's model. The documentation instinct itself is not new: the datasheets-for-datasets and data-statements literature asked these questions years ago. The capsule's addition is not the questions but the enforcement — the answers are bound to the data, versioned with it, and checked in CI, rather than written once into a document that drifts from the data it describes.
 
 The capsule completes the picture: the model card documents the model; the capsule documents what fed it. The connection should be explicit and permanent. When a model is registered, the registration includes references to the training-data capsule versions — not "client_transactions table" but "`client_transactions`, snapshot `2026-03-15`, schema version 4, quality suite v2.1 passed, lawful-basis manifest v7." That single discipline buys three capabilities Meridian did not previously have.
 
-**Audit trails that actually work.** When a regulator asks what data trained the suitability model, you answer with a capsule reference that retrieves the exact data with full lineage, quality results, and policy documentation. No forensic reconstruction. The eleven-minute meeting becomes a query against a frozen, evidenced artifact.
+**Audit trails that actually work.** When a regulator asks what data trained the suitability model, you answer with a capsule reference that retrieves the exact data with full lineage, quality results, and policy documentation. No forensic reconstruction. The eleven-minute meeting becomes a query against a frozen, evidenced artefact.
 
 **Drift detection with meaningful baselines.** Production inference data is compared against the training capsule's recorded distributions. The capsule's quality expectations — "`portfolio_value` between 0 and 50m, mean around 480k" — are the baseline for detecting when live data diverges from training conditions, rather than a number someone has to remember.
 
@@ -164,6 +164,8 @@ Eight illustrative rows stand in for the seventy-three the committee asked about
 
 Lineage is easy when data sits in tables and jobs run on schedules. It is hard when data flows continuously and models train on snapshots of a moving target — which is exactly Meridian's intraday position pipeline. Consider the chain behind a single suitability feature:
 
+<!-- FIG 7.1: streaming-to-training lineage chain — raw Kafka topic → CDC stream → Flink feature table (Hudi capsule) → pinned training snapshot → model version; capsule identifiers are the edges that connect the stages. -->
+
 Raw position events land in a Kafka topic. A CDC job captures custodian database changes into another topic. A Flink job joins and transforms these streams into a feature table (the Hudi capsule from Chapter 6). A batch job snapshots that feature table for model training. The trained model deploys and serves predictions to the adviser copilot.
 
 Every step has its own tooling and its own lineage mechanism, and the value of capsule-anchored lineage is *connecting them into one chain*: raw topic → CDC stream → feature table → training snapshot → model version. When a prediction is challenged or performance degrades, you trace backward through the whole chain. This is not just operational convenience; it is a compliance requirement for high-stakes ML. The EU AI Act demands transparency about training data for high-risk systems; financial regulators want audit trails for decisions that affect clients. With capsule-anchored lineage, "which models were trained on data derived from this Kafka topic?" is a graph query. Without it, you are back to archaeology — which is to say, back to "I'll come back to you on that."
@@ -192,6 +194,7 @@ def check_drift(live_window, training_capsule):
     alerts = []
     for feature, ref in base.items():
         live = summarise(live_window, feature)     # mean, p95, null_rate
+        # baselines record std; the 10%-of-mean fallback is illustrative shorthand
         if abs(live.mean - ref["mean"]) > 3 * ref.get("std", ref["mean"]*0.1):
             alerts.append((feature, "mean drift", live.mean, ref["mean"]))
         if live.null_rate > ref["null_rate"] * 5:
@@ -207,7 +210,7 @@ The baseline is not a number someone remembered; it is the training capsule's ow
 
 A fair objection: ML development is exploratory. Data scientists iterate fast through feature ideas, architectures, and hyperparameters. Impose heavyweight metadata on every experimental dataset and you smother the very iteration that makes ML work. The resolution is to **tier the capsule requirements to the stakes.**
 
-Exploratory work in a development environment might require only structural metadata and basic lineage — enough to know what a thing is and where it came from, no more. As a dataset matures toward production training, progressively enforce semantic documentation, quality gates, and policy classification. Reserve the *full* capsule treatment for datasets that will train production models. At Meridian, the rule is explicit and risk-tiered: a model that influences a client-facing suitability or eligibility decision gets full capsule rigour from the first training run; an internal next-best-action recommender for the marketing team can operate with lighter metadata until it earns more. Right-sizing governance to actual risk is not a compromise of the discipline — it is the discipline applied with judgement.
+Exploratory work in a development environment might require only structural metadata and basic lineage — enough to know what a thing is and where it came from, no more. As a dataset matures toward production training, progressively enforce semantic documentation, quality gates, and policy classification. Reserve the *full* capsule treatment for datasets that will train production models. At Meridian, the rule is explicit and risk-tiered: a model that influences a client-facing suitability or eligibility decision gets full capsule rigour from the first training run; an internal next-best-action recommender for the marketing team can operate with lighter metadata until it earns more. Tiering rigour to risk *is* the discipline; uniform ceremony is just easier to write down.
 
 Three ML-specific subtleties deserve a flag, because they do not arise as sharply in batch analytics:
 
@@ -217,11 +220,11 @@ Three ML-specific subtleties deserve a flag, because they do not arise as sharpl
 
 ## Honest limits
 
-Capsules are not a panacea, and pretending otherwise invites the backlash that kills disciplines. Four limits are worth stating plainly.
+Capsules are not a panacea, and pretending otherwise invites the backlash that kills disciplines. Four limits, stated plainly.
 
 **Metadata completeness is aspirational.** You will never have perfect metadata for every dataset. Legacy training data lacks lineage; old feature definitions are ambiguous. The goal is progressive improvement prioritised by risk — high-stakes models first — not immediate perfection.
 
-**Tooling fragmentation is real.** Feature stores, model registries, lineage systems, and catalogs each have their own metadata models, so capsules often mean building integration layers between tools never designed to cooperate. That is genuine, ongoing overhead. The return is governance capability you cannot otherwise get, but the cost should not be hand-waved. (Chapter 12 is largely about reducing this cost with open standards.)
+**Tooling fragmentation is real.** Feature stores, model registries, lineage systems, and catalogues each have their own metadata models, so capsules often mean building integration layers between tools never designed to cooperate. That is genuine, ongoing overhead. The return is governance capability you cannot otherwise get, but the cost should not be hand-waved. (Chapter 13 is largely about reducing this cost with open standards.)
 
 **Versioning has a price.** Every immutable snapshot consumes storage; every lineage edge consumes graph capacity; every quality check consumes compute. At the scale of a feature store serving thousands of features across hundreds of models, this adds up. Most organisations find it acceptable — storage is cheap against regulatory risk and debugging time — but capacity planning should account for it rather than discover it.
 
@@ -235,7 +238,14 @@ Six months after the model was paused, Maya's team retrained the suitability sco
 
 Nothing about the model had changed. What changed was that the data could now produce evidence about itself: meaning, lineage, lawful basis, and the exact state it was in on the day the model trained. That is the entire payoff of *Bind*, made visible at the moment it matters most.
 
-This closes Part II. The capsule is defined (Chapter 5), it has a home in the lakehouse and the stream (Chapter 6), and it extends to the ML workloads where the stakes are highest (Chapter 7). But there is a quieter prerequisite running underneath all three chapters that we have leaned on without examining: none of this binding produces *meaning* unless the data underneath is *structured* to carry meaning in the first place. A capsule can bind a definition to a column, but if the column sits in a tangle of unmodelled, conflicting, source-shaped tables, the definition has nothing stable to attach to. Before we automate context in Part III, the next chapter addresses the structure that makes context possible at all: modelling for a world where the consumer is as likely to be an AI agent as an analyst.
+That closes the ML thread of *Bind*: the capsule defined (Chapter 5), housed in the lakehouse and the stream (Chapter 6), and carried into the workloads where it pays for itself in an audit (this chapter). But there is a quieter prerequisite running underneath all three chapters that we have leaned on without examining: none of this binding produces *meaning* unless the data underneath is *structured* to carry meaning in the first place. A capsule can bind a definition to a column, but if the column sits in a tangle of unmodelled, conflicting, source-shaped tables, the definition has nothing stable to attach to. Before we automate context in Part III, the next chapter addresses the structure that makes context possible at all: modelling for a world where the consumer is as likely to be an AI agent as an analyst.
+
+## Further reading
+
+- On documenting datasets, the *Datasheets for Datasets* and *Data Statements for NLP* lines of work — the prior art the capsule enforces rather than replaces.
+- On documenting models, the *Model Cards for Model Reporting* proposal — the model-side complement to the capsule's data-side record.
+- On feature stores, the Feast, Tecton, and Databricks/Vertex Feature Store documentation; on streaming schema governance, the Confluent Schema Registry compatibility-mode docs and the AsyncAPI specification.
+- The EU AI Act's training-data governance and record-keeping obligations for high-risk systems (Regulation (EU) 2024/1689), which this chapter's evidence discipline is designed to satisfy.
 
 > **Chapter summary.** MLOps tooling governs the model side and leaves the data side exposed — which is how good data still fails an audit. Extend capsules to ML: training data as immutable snapshots tied to model versions; feature groups as full capsules with policy, deep lineage, and distribution gates; model registrations that reference training-capsule versions for working audit trails, meaningful drift baselines, and defensible retraining. Capsule-anchored lineage connects the streaming-to-training chain into one graph query. Tier the rigour to risk so experimentation survives, and respect the honest limits — completeness is aspirational, tooling is fragmented, versioning costs, and human discipline is the real bottleneck.
 

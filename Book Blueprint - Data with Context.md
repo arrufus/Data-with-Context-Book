@@ -132,7 +132,7 @@ Source: MVO + bootstrapping sections of the *90-Day Playbook*; *Data Mesh* seman
 ### Part V — Prove: AI-Readiness as Evidence *(Level 3 → 4)*
 
 **Ch 17 — AI-readiness is an evidence problem, not a quality problem**
-Goal: the reframe — a product is AI-ready when it can produce defensible evidence on demand. The six surfaces of evidence (ownership, meaning, history/lineage, control, consumption, operations).
+Goal: the reframe — a product is AI-ready when it can produce defensible evidence on demand. The six surfaces of evidence (ownership, metadata/meaning, quality, lineage, privacy, consumption).
 Source: *AI-Readiness Is an Evidence Problem*. Words: ~4,000.
 
 **Ch 18 — AI-ready is a certification, not a state**

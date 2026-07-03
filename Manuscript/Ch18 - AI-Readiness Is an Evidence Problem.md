@@ -1,4 +1,4 @@
-# Chapter 17 — AI-Readiness Is an Evidence Problem
+# Chapter 18 — AI-Readiness Is an Evidence Problem
 
 > **Where you are:** Part V — *Prove*, the fourth and final move. Parts II–IV bound, activated, and packaged context. This part turns packaged context into *evidence* that survives an audit. Chapter 4 stated the thesis in a sentence; this chapter develops it into a working diagnostic. Maturity target: the reach toward **Level 4** — continuously assured.
 
@@ -6,11 +6,9 @@
 
 ## The question that paused a model
 
-Return to the moment from Chapter 7, because it is the hinge of this entire part. Meridian's suitability-and-eligibility model — the one Maya's team supplied half the features for — was up for review by the model-risk committee. Maya had her dashboards, her quality metrics, her diagrams. Then the head of model risk asked one question, read slowly from her notes: *"Maya, of the seventy-three features this model consumes, which were sourced under a lawful basis that includes automated decision-making, and which were not?"*
+Return to the glass-walled room from Chapter 7 — the eleven minutes, the question about seventy-three features and their lawful basis, the *"I'll come back to you on that"* that paused six months of engineering, three vendors, two regulatory submissions, and a head of data's reputation. We resolved that story in Chapter 7: Meridian retrained on capsule-governed data and the model was approved. What Part II passed over quickly is *why* the original failure happened, and the why is the whole subject of Part V.
 
-Silence. Maya knew which catalogue to look in. She knew the consent register lived somewhere in the privacy team's SharePoint. She knew her engineers could probably trace it, given a week or two. What she could not do was answer the question in the room, or know whether today's answer matched the answer six months ago when the model trained. She said, "I'll come back to you on that," and the committee paused the model — six months of engineering, three vendors, two regulatory submissions, and a chief data officer's reputation, paused. Not because the data was bad. Because she could not produce the evidence that it was good.
-
-We resolved that story in Chapter 7: Meridian retrained on capsule-governed data and the model was approved. But we passed quickly over *why* the original failure happened, and that why is the whole subject of Part V. Maya's data was not dirty. The features were complete, accurate, fresh, and statistically well-behaved; they had passed every quality gate they were asked to pass. The data was not the problem. The problem was that the data **could not produce evidence about itself** — not the evidence engineers consume (schema, freshness, row counts), but the evidence an AI workload, a regulator, or a model-risk committee demands: defensible answers, on demand, to a small set of questions about meaning, ownership, history, control, and consumption.
+Maya's data was not dirty. The features were complete, accurate, fresh, and statistically well-behaved; they had passed every quality gate they were asked to pass. The data was not the problem. The problem was that the data **could not produce evidence about itself** — not the evidence engineers consume (schema, freshness, row counts), but the evidence an AI workload, a regulator, or a model-risk committee demands: defensible answers, on demand, to a small set of questions this chapter is about to name.
 
 ## The wrong diagnosis, made confidently
 
@@ -25,6 +23,8 @@ So state the thesis in its full form, the one Chapter 4 introduced and this chap
 AI workloads make this acute because they are unforgiving consumers. They do not read Confluence pages. They do not tolerate ambiguity. They compound the cost of every undocumented assumption and amplify it across thousands of inferences a second. A human analyst who met Maya's seventy-three features would notice the odd one and investigate; the model consumed all seventy-three at speed and asked no questions. Evidence is what replaces the judgement the human used to supply — and evidence, unlike judgement, has to be built into the data product deliberately.
 
 ## The six surfaces of evidence
+
+<!-- FIG 18.1: the six evidence surfaces — ownership, metadata, quality, lineage, privacy, consumption; each a question a product must answer from a query, with its retrieval-time budget. This is the Blueprint-promised evidence-surfaces diagram. -->
 
 "Evidence" sounds abstract until you decompose it, and in practice it has exactly six surfaces. These are the six questions an AI-ready data product must be able to answer about itself, on demand, without a forensic project. Every diagnostic in the rest of Part V hangs off them.
 
@@ -46,7 +46,7 @@ Read the six together and notice they are not new work bolted onto the data prod
 
 "Evidence" stays abstract until each surface is a *query that returns an answer in the room*. Here is what each of the six looks like at Meridian, produced on demand rather than reconstructed:
 
-**Ownership** — *"Who owns `client_holdings`?"* → `{ "owner": "Maya Osei", "role": "Product Owner", "decision_rights": ["schema","contract","access"], "pager": "wealth-client", "since": "2026-04-01" }`. A name with authority, not a team.
+**Ownership** — *"Who owns `client_holdings`?"* → `{ "owner": "Maya Osei", "role": "Product Owner", "decision_rights": ["schema","contract","access"], "pager": "wealth-client", "since": "2026-04-01" }`. A name with authority, not a team. (The `since` date is when Maya was *chartered* with decision rights — the funded, accountable ownership of Chapter 21 — in the reorganisation that followed the pause; she had held the product-owner role before that.)
 
 **Metadata** — *"What does `em_exposure_pct` mean?"* → `{ "definition_ref": "glossary://wealth/emerging_markets", "division_dependent": true, "as_code": true }`. Meaning as a queryable reference, not a Confluence page.
 
@@ -106,15 +106,20 @@ Not all evidence is equal, and it helps to grade it, because "we have lineage" c
 - **Monitoring** — you have a live dashboard of the *current* state (today's quality score, today's owner). Useful, but it answers the present, and audits ask about the past.
 - **Bound evidence** — the answer is a queryable, versioned, point-in-time property of the data product itself, retrievable within budget for any date. This is what the capsule and the bitemporal graph produce, and only this passes.
 
-The maturity move, per surface, is reconstruction → monitoring → bound. Naming the degrees stops teams from mistaking a dashboard (monitoring) for evidence (bound), which is exactly the error Chapter 19's Tom and Nadia make.
+The maturity move, per surface, is reconstruction → monitoring → bound. Naming the degrees stops teams from mistaking a dashboard (monitoring) for evidence (bound), which is exactly the error Chapter 20's Tom and Nadia make.
 
 ## A counter-story: passing by reconstruction
 
-It is worth being honest that some organisations *do* pass audits without any of this — by heroic reconstruction — and understanding the cost is what makes the case for bound evidence. A peer of Meridian's passed a model-risk review by putting six people on a three-week scramble: manually tracing lineage into spreadsheets, interviewing the privacy team to reconstruct lawful basis, assembling quality history from backups. They passed. And then they had to do it *again* at the next review, and the one after, because nothing they built was reusable — reconstruction produces a passing audit and no durable asset. Bound evidence inverts this: the up-front cost of binding the six surfaces is paid once, and every subsequent audit is a set of queries. The counter-story is not that reconstruction is impossible; it is that it is a recurring tax with no equity, and the discipline of this book is the mortgage that ends the rent.
+Some organisations *do* pass audits without any of this — by heroic reconstruction — and understanding the cost is what makes the case for bound evidence. A peer of Meridian's passed a model-risk review by putting six people on a three-week scramble: manually tracing lineage into spreadsheets, interviewing the privacy team to reconstruct lawful basis, assembling quality history from backups. They passed. And then they had to do it *again* at the next review, and the one after, because nothing they built was reusable — reconstruction produces a passing audit and no durable asset. Bound evidence inverts this: the up-front cost of binding the six surfaces is paid once, and every subsequent audit is a set of queries. The counter-story is not that reconstruction is impossible; it is that it is a recurring tax with no equity, and the discipline of this book is the mortgage that ends the rent.
 
 ## What the diagnosis leaves open
 
 The six surfaces tell you *what evidence a data product must produce.* They do not yet tell you *how much evidence is enough, for which use.* And that turns out to be the harder half, because AI-readiness is not binary. Maya's suitability data might be entirely ready for internal portfolio summarisation and dangerously unready for client-facing advice — same data, different stakes, different evidence bar. "Ready" sounds like a property of the data; it is actually a judgement about the relationship between the data, the use case, the consumer, the controls, and the cost of being wrong. Producing evidence is necessary. Deciding whether the evidence suffices for a *specific* AI use is a different act, and it needs a model of its own. That model is certification, and it is the next chapter.
+
+## Further reading
+
+- On the regulatory demands the six surfaces map to, the primary texts: the EU AI Act (Regulation (EU) 2024/1689), BCBS 239, the UK/EU GDPR (lawful basis and Article 22), NIST AI RMF 1.0, and ISO/IEC 42001.
+- On accountability as an evidence surface, the FCA/PRA Senior Managers & Certification Regime (SM&CR) and OSFI Guideline E-23.
 
 > **Chapter summary.** AI initiatives die at the data layer not because the data is dirty but because it cannot produce **evidence about itself**. The reflex diagnosis — invest more in data quality — is predictably wrong: the effort that yields a clean report is not the effort that survives an audit. The thesis: *AI-readiness is an evidence problem, not a quality problem* — a product is ready when it can produce defensible evidence on demand for any consumer, human, machine, or regulator. Evidence has six surfaces: **ownership, metadata, quality, lineage, privacy, consumption**. These are not new work; they are the capsule, active metadata, and context-product context viewed from the consumer's side and asked to testify — made cheap and queryable by Data Capsules and Metadata as Code. What the six surfaces leave open is *how much evidence is enough for which use* — the certification question.
 

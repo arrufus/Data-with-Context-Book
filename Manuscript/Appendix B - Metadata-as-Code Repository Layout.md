@@ -1,8 +1,8 @@
 # Appendix B — Metadata-as-Code Repository Layout
 
-*The full repository structure, CI pipeline, PR template, CODEOWNERS, and scaffolding introduced in Chapters 9–10 and 13. Lift and adapt.*
+*The full repository structure, CI pipeline, PR template, CODEOWNERS, and scaffolding introduced in Chapters 10–11 and 14. Lift and adapt.*
 
-The principle (Chapter 9): the definition in Git is the source of truth; the live platform is a deployment of it. Everything below serves that principle — one repository where a product's contract, schema, tests, policy, and glossary definition live together, move together, and are reconciled by CI.
+The principle (Chapter 10): the definition in Git is the source of truth; the live platform is a deployment of it. Everything below serves that principle — one repository where a product's contract, schema, tests, policy, and glossary definition live together, move together, and are reconciled by CI.
 
 ---
 
@@ -58,6 +58,10 @@ on:
   pull_request:
     paths: ["table-specs/**", "contracts/**", "tests/**",
             "policies/**", "glossary/**", "semantic/**", "certs/**"]
+  push:                     # required, or step 7's main-only deploy never fires
+    branches: [main]
+    paths: ["table-specs/**", "contracts/**", "tests/**",
+            "policies/**", "glossary/**", "semantic/**", "certs/**"]
 jobs:
   reconcile:
     runs-on: ubuntu-latest
@@ -83,7 +87,7 @@ jobs:
       # 5. IMPACT ANALYSIS via the lineage graph
       - run: capsule-cli impact --format pr-comment
 
-      # 6. POLICY TESTS: assert masking works for each role (Chapter 10)
+      # 6. POLICY TESTS: assert masking works for each role (Chapter 11)
       - run: capsule-cli test-policies policies/
 
       # 7. DEPLOY (main only): apply DDL, promote snapshot, emit lineage, notify
@@ -151,6 +155,7 @@ The template makes the discipline unavoidable at the moment of change: you canno
 # scripts/new-capsule.sh  —  generate a compliant capsule skeleton
 # usage: ./new-capsule.sh --name monthly_revenue --domain finance --owner alice@…
 set -euo pipefail
+# illustrative positional parsing; a real version should use getopts so flags can reorder
 name="$2"; domain="$4"; owner="$6"
 mkdir -p "table-specs/$domain" "tests/$name" "contracts/$domain"
 cat > "table-specs/$domain/$name.yaml" <<EOF

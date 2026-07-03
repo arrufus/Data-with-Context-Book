@@ -1,6 +1,6 @@
 # Appendix C — AI-Readiness Certification Checklist
 
-*The certifier's working instrument from Chapter 18: the five readiness dimensions decomposed into evidence items, each marked automatable or attested, plus the blank certification record to fill in.*
+*The certifier's working instrument from Chapter 19: the five readiness dimensions decomposed into evidence items, each marked automatable or attested, plus the blank certification record to fill in.*
 
 Certification is a **derived property** of a data product, assembled from evidence that already exists, combining machine-readable checks with named human sign-off. It is *use-case specific*: certify a product for a *use*, at a *level*, on *evidence*. This checklist is what a certifier walks. Mark each item **✓ pass**, **~ partial**, or **✗ fail**; a dimension passes when its required items pass. "Auto" items the platform can confirm; "Attest" items require a named human to affirm.
 

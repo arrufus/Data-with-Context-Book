@@ -1,4 +1,4 @@
-# Chapter 16 — Ontologies, Semantic Layers, and Knowledge Graphs in Practice
+# Chapter 17 — Ontologies, Semantic Layers, and Knowledge Graphs in Practice
 
 > **Where you are:** Part IV — *Package*, closing chapter. The playbook gave you the plan; this chapter is the craft beneath its two hardest phases — building meaning an agent can actually reason over. Get this right and you have a context data product; get it wrong and you have an elegant artefact nobody queries. It closes the design half of the book and hands off to *Prove*.
 
@@ -106,18 +106,21 @@ The `filter` *is* the ontology's EM rule, expressed once, in the one place every
 
 ## Building the knowledge graph
 
-The liberating insight from the playbook bears repeating because it dissolves the most common blocker: you do not build a knowledge graph from zero. You already have one, scattered across the catalogue, the lineage tools, the glossary, and people's heads. The work is *assembly*.
+As the playbook established, you do not build a knowledge graph from zero: you already have one, scattered across the catalogue, the lineage tools, the glossary, and people's heads. The work is *assembly* — and the craft is in where the assembly is hard.
 
-The high-value, irreducibly manual step is **mapping catalogue entries to ontology entities** — deciding that this catalogued table *is* the Client entity, that this column *is* the risk-profile assessment. That mapping cannot be automated because it is exactly the interpretive judgement the ontology was built to capture; it is where domain knowledge enters the graph. Around it, the enrichment is largely connection rather than creation: lineage flows in from the OpenLineage events Meridian already emits into the Chapter 12 graph; confidence scoring comes from the active-metadata trust signals of Chapter 11; usage intelligence accumulates from observed query patterns. The knowledge graph is where Parts II, III, and IV visibly converge — the capsule's bindings, the active layer's signals, and the ontology's meaning, joined into one traversable structure.
+The high-value, irreducibly manual step is **mapping catalogue entries to ontology entities** — deciding that this catalogued table *is* the Client entity, that this column *is* the risk-profile assessment. That mapping cannot be automated because it is exactly the interpretive judgement the ontology was built to capture; it is where domain knowledge enters the graph. Around it, the enrichment is largely connection rather than creation: lineage flows in from the OpenLineage events Meridian already emits into the Chapter 13 graph; confidence scoring comes from the active-metadata trust signals of Chapter 12; usage intelligence accumulates from observed query patterns. The knowledge graph is where Parts II, III, and IV visibly converge — the capsule's bindings, the active layer's signals, and the ontology's meaning, joined into one traversable structure.
 
-On tooling, the playbook's discipline is the right one and worth restating as a principle: **the knowledge graph is a logical construct first and a technology choice second.** A property graph in Neo4j Community Edition or a well-structured set of JSON documents is more than enough for a single-domain pilot. Procuring a managed graph platform before the pilot proves value is tool-first thinking — the failure mode that has teams comparing graph databases for months while no meaning gets modelled. Meridian stands up the smallest thing that works and evaluates managed platforms only after the suitability product earns the investment.
+On tooling, the playbook's rule holds: **the knowledge graph is a logical construct first and a technology choice second.** A property graph in Neo4j Community Edition or a well-structured set of JSON documents is more than enough for a single-domain pilot. Procuring a managed graph platform before the pilot proves value is tool-first thinking — the failure mode that has teams comparing graph databases for months while no meaning gets modelled. Meridian stands up the smallest thing that works and evaluates managed platforms only after the suitability product earns the investment.
+
+One rule keeps that pilot honest: **the graph is a consumer of the capsules, not an exception to them.** It registers as a consumer (so a breaking change to `client_holdings` flags the graph); it inherits classification and masking (the pilot graph stores the pseudonymised `client_id`, never the clear identifier); its retention follows the capsule's; and every query reaches it through the semantic API's entitlement checks, not a raw Bolt connection on the pilot box. This is what makes Neo4j Community Edition acceptable for the pilot despite its lack of fine-grained access control — pseudonymised identifiers and API-side entitlement carry the governance that the store does not, and production graduation adds real RBAC and clustering. It costs almost nothing at pilot scale, and it prevents the failure that would be hardest to live down: the team that wrote the book on bound context shipping an ungoverned copy of client data in a Community-Edition graph. A knowledge graph that escapes the policy of the data it instantiates is the swamp, rebuilt with better queries.
 
 ### Three queries that earn the graph
 
 A knowledge graph justifies itself only if it answers questions a table cannot answer cheaply. Three do, and they are worth seeing in Cypher:
 
 ```cypher
-// 1. Suitability traversal — the Adeyemi question, as a single hop-chain
+// 1. Suitability traversal — the numerator of the Adeyemi question, one hop-chain
+//    (divide by total portfolio value for the exposure percentage)
 MATCH (c:Client {client_id:'C-88213'})-[:HOLDS]->(:Portfolio)
       -[:CONTAINS]->(h:Holding)-[:CLASSIFIED_AS]->(a:AssetClass)
 WHERE a.is_emerging_market OR (c.division='institutional' AND a.is_frontier)
@@ -128,9 +131,9 @@ MATCH (a:AssetClass {code:'EQ-EM'})<-[:CLASSIFIED_AS]-(:Holding)
       <-[:CONTAINS]-(:Portfolio)<-[:HOLDS]-(c:Client)
 RETURN count(DISTINCT c) AS clients_affected;
 
-// 3. Which rule applied on a past date? (bitemporal, cf. Ch 12)
+// 3. Which rule applied on a past date? (bitemporal, cf. Ch 13)
 MATCH (r:Rule {name:'em_classification'})
-WHERE r.valid_from <= date('2026-03-15') < r.valid_to
+WHERE r.valid_from <= date('2026-03-15') < r.valid_to  // chained comparison: valid_from <= date < valid_to
 RETURN r.definition;
 ```
 
@@ -138,11 +141,11 @@ Each is a traversal that would be a brutal multi-join across silos in a relation
 
 ### Managing meaning as it changes
 
-Ontologies and semantic definitions drift like everything else, so meaning needs change management too — the drift problem at the semantic level. Meridian versions its ontology (the `@2.0` in the specs) and treats a rule change as a governed release: redefining `em_classification` is a major version, requires the owner's sign-off, and — because the semantic layer's `governed_by` binds metrics to the rule — automatically flags every metric and every context product that depends on it. Deprecating an entity or migrating consumers when a rule changes follows the same capsule lifecycle from Chapter 5: draft, review, publish, deprecate, with notice to consumers. The point is that the meaning layers are not write-once artefacts; they are living products under the same version discipline as the data, because a semantic definition that drifts silently reintroduces the exact problem the semantic layer was built to solve.
+Ontologies and semantic definitions drift like everything else, so meaning needs change management too — the drift problem at the semantic level. Meridian versions its ontology (the `@2.0` in the specs) and treats a rule change as a governed release: redefining `em_classification` is a major version, requires the owner's sign-off, and — because the semantic layer's `governed_by` binds metrics to the rule — automatically flags every metric and every context product that depends on it. Because the EM rule spans two divisions with the political history Chapter 16 dramatised, its change carries *two* named reviewers — one per desk — following the CODEOWNERS pattern of Chapter 10; single-owner sign-off is exactly what the SME standoff showed to be insufficient for a cross-division rule. Deprecating an entity or migrating consumers when a rule changes follows the same capsule lifecycle from Chapter 5: draft, review, publish, deprecate, with notice to consumers. The point is that the meaning layers are not write-once artefacts; they are living products under the same version discipline as the data, because a semantic definition that drifts silently reintroduces the exact problem the semantic layer was built to solve.
 
 ## The three failure modes, revisited as craft
 
-Chapter 15 named the three failure modes as things to avoid; here they recur as things the *craft* actively guards against, because each maps to one of the three layers.
+Chapter 16 named the three failure modes as things to avoid; here they recur as things the *craft* actively guards against, because each maps to one of the three layers.
 
 **Ontology perfectionism** is a failure of the *ontology* layer — modelling the enterprise instead of the consumer's questions. The guard is the five-to-ten-entity bound and the consumer-first discipline: every entity justified by a question the copilot must answer.
 
@@ -154,11 +157,17 @@ Read together, the three layers and the three failure modes make the same point 
 
 ## The operating-model shadow, and the handoff to Prove
 
-One theme has been deferred through all of Part IV and can be deferred no longer, though its full treatment belongs to Part V. Everything in this chapter — an agreed ontology, a governed semantic layer, a maintained knowledge graph — requires *ownership*. Someone has to decide that "active client" means this and not that, has to sign off the EM rule, has to keep the semantic layer's definitions current as the business changes. The single discriminator between organisations that make semantic products work and those that produce costly relabelling exercises is whether domains genuinely operate as *product organisations*: identified consumers, articulated value, contracts, roadmaps, lifecycle management, funded and named ownership. "Data as a product" is not a storage concern; it is an operating-model commitment, and it is the gating capability. Meridian's suitability product works because Maya owns it with a real remit — not because the graph technology is good. This is the thread that Part V picks up when it turns to why data mesh stalls and why platform teams become bottlenecks: the packaging of Part IV is only durable on an operating model that funds and empowers domain ownership.
+One theme has been deferred through all of Part IV and can be deferred no longer, though its full treatment belongs to Part V. Everything in this chapter — an agreed ontology, a governed semantic layer, a maintained knowledge graph — requires *ownership*. Someone has to decide that "active client" means this and not that, has to sign off the EM rule, has to keep the semantic layer's definitions current as the business changes. Whether domains genuinely operate as *product organisations* — identified consumers, contracts, roadmaps, funded and named ownership — is the discriminator Chapter 21 dissects, and it is what separates semantic products that work from costly relabelling exercises. "Data as a product" is an operating-model commitment, not a storage concern — and it is the gating capability. Meridian's suitability product works because Maya owns it with a real remit — not because the graph technology is good. This is the thread that Part V picks up when it turns to why data mesh stalls and why platform teams become bottlenecks: the packaging of Part IV is only durable on an operating model that funds and empowers domain ownership.
 
 With that flagged, stand back and see where the book has arrived. Meridian's suitability domain is now a genuine context data product: governed data (Part II), kept active (Part III), and packaged with an ontology, a semantic layer, and a knowledge graph an agent can reason over (Part IV). The copilot answers the Adeyemi question correctly, resolving the frontier-market ambiguity from a rule rather than a guess. This is the complete *design* answer to the question the book posed in Chapter 4: what does AI need from data? It needs context — bound, active, and packaged.
 
 But a designed context data product and a *trusted* one are different things. When the copilot gives a client-facing suitability answer, when Meridian's suitability model faces its model-risk committee, when a regulator asks whether the data behind an automated decision was fit for the purpose — the question is no longer *"is the context well-designed?"* but *"can you prove it is safe and appropriate for this use?"* That is the assurance question, and it is the last move of the discipline. If context data products answer the design question, **certification answers the assurance question.** Part V — *Prove* — is where the meaning Meridian has so carefully packaged is turned into evidence that survives an audit.
+
+## Further reading
+
+- On the accelerator ontology, the Financial Industry Business Ontology (FIBO, EDM Council / OMG) — patterns to borrow, not a model to adopt whole.
+- On expressing ontologies, the W3C OWL and RDF primers (and JSON-LD for the lightweight route this chapter recommends for pilots).
+- On the semantic layer and the graph, the dbt MetricFlow / LookML documentation and the Neo4j / Cypher guides used in the queries above.
 
 > **Chapter summary.** Ontology, semantic layer, and knowledge graph are three distinct layers of meaning, not synonyms: the ontology models the domain (entities, relationships, rules), the semantic layer maps business concepts to governed physical calculation, and the knowledge graph is the populated, connected, confidence-scored instance. An agent needs all three. Ontology craft: bound to the consumer's questions (5–10 entities), relationships with cardinality and directionality, business rules where the value concentrates, controlled vocabularies for ambiguous fields, FIBO for patterns not wholesale. The semantic layer guarantees one governed definition per concept across all consumers, killing metric-level drift. The knowledge graph is assembled from existing metadata (the manual, high-value step is mapping entries to ontology entities), logical construct before technology choice. The three failure modes map to the three layers. All of it rests on funded domain ownership — the handoff to Part V, where design becomes provable assurance.
 

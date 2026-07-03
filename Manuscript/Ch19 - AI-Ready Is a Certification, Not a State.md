@@ -1,6 +1,6 @@
-# Chapter 18 — AI-Ready Is a Certification, Not a State
+# Chapter 19 — AI-Ready Is a Certification, Not a State
 
-> **Where you are:** Part V — *Prove*. Chapter 17 established *what* evidence a data product must produce. This chapter answers *how much is enough, for which use* — turning evidence into an assurance model an organisation can run. Maturity target: the top of the ladder, **Level 4 — continuously assured**.
+> **Where you are:** Part V — *Prove*. Chapter 18 established *what* evidence a data product must produce. This chapter answers *how much is enough, for which use* — turning evidence into an assurance model an organisation can run. Maturity target: the top of the ladder, **Level 4 — continuously assured**.
 
 ---
 
@@ -8,9 +8,9 @@
 
 Every organisation now wants AI-ready data. The phrase is in the strategy decks, the governance forums, the vendor pitches, the board conversations. It sounds sensible. It is dangerously vague, and the vagueness is not harmless — it is the reason well-meaning programmes aim at the wrong target and miss.
 
-Ask four people at Meridian what "AI-ready" means and you get four honest, incompatible answers. To Maya's data engineers it means clean, integrated, available on a modern platform. To Helena's governance team it means classified, owned, controlled. To the data-science team it means suitable for model development, retrieval, fine-tuning, agentic workflows. To a business leader it simply means trusted enough to support better decisions. None is wrong. None is sufficient alone. And because the phrase means five things at once, an organisation can declare its data "AI-ready" and have proven nothing at all.
+Ask four people at Meridian what "AI-ready" means and you get four honest, incompatible answers. To Maya's data engineers it means clean, integrated, available on a modern platform. To Helena's governance team it means classified, owned, controlled. To the data-science team it means suitable for model development, retrieval, fine-tuning, agentic workflows. To a business leader it simply means trusted enough to support better decisions. None is wrong. None is sufficient alone. And because the phrase means four things at once, an organisation can declare its data "AI-ready" and have proven nothing at all.
 
-The fix is to stop treating AI-readiness as a loose label stuck on a dataset and start treating it as a **certification outcome.** A data product is AI-ready only when there is *evidence* that it has the right meaning, ownership, quality, controls, access patterns, usage constraints, and monitoring for the AI use cases it is expected to support. Chapter 14 argued that context data products answer the *design* question — what does AI need from data? Certification answers the *assurance* question: how does the organisation *know* this product is safe, trusted, and appropriate for a given AI use? Part IV built the meaning; Part V proves it fit.
+The fix is to stop treating AI-readiness as a loose label stuck on a dataset and start treating it as a **certification outcome.** A data product is AI-ready only when there is *evidence* that it has the right meaning, ownership, quality, controls, access patterns, usage constraints, and monitoring for the AI use cases it is expected to support. Chapter 15 argued that context data products answer the *design* question — what does AI need from data? Certification answers the *assurance* question: how does the organisation *know* this product is safe, trusted, and appropriate for a given AI use? Part IV built the meaning; Part V proves it fit.
 
 ## The problem with "ready"
 
@@ -22,7 +22,7 @@ This also explains why AI-readiness cannot be **self-declared.** AI systems rais
 
 ## Five dimensions of certification
 
-A certification model has to be practical enough to apply and rigorous enough to matter. Five dimensions provide the working structure, and they map onto the six evidence surfaces of Chapter 17 while organising them around the question a certifier actually asks.
+A certification model has to be practical enough to apply and rigorous enough to matter. Five dimensions provide the working structure, and they map onto the six evidence surfaces of Chapter 18 while organising them around the question a certifier actually asks.
 
 **Meaning readiness** asks whether the product carries enough business meaning for AI systems and humans to use it *correctly* — glossary mappings, entity and metric definitions, calculation logic, semantic-model alignment, approved hierarchies, documented ambiguity. Without it, AI infers too much from labels and proximity and produces confident wrong answers. This is Part IV's semantic layer, presented as evidence.
 
@@ -86,7 +86,7 @@ Read it and note what makes it *assurance* rather than a badge: each of the five
 
 ### Recertification: certification that reassesses
 
-The `triggers` block is what makes certification a continuously-derived state (Level 5) rather than a launch stamp. When any trigger fires — a quality gate fails, lineage breaks, the contract takes a major version, a regulation changes, or six months pass — the certification *reassesses automatically*. What that looks like to a consumer mid-flight matters: if a triggered reassessment downgrades the product (say a quality gate fails overnight), the active layer suppresses it from certified workflows immediately, the agent-context API returns the lowered level, and the copilot's next call learns it may no longer use the product for its intended use — before it produces a bad answer, not after. The recertification workflow is the operational teeth of "assurance you know remains safe tomorrow": the certification is only as good as its willingness to *withdraw itself* when the evidence changes, and the triggers are what make it willing.
+The `triggers` block is what makes certification a continuously-derived state (Level 5) rather than a launch stamp. When any trigger fires — a quality gate fails, lineage breaks, the contract takes a major version, a regulation changes, or six months pass — the certification *reassesses automatically*. What that looks like to a consumer mid-flight matters: if a triggered reassessment downgrades the product (say a quality gate fails overnight), the active layer suppresses it from certified workflows immediately, the agent-context API returns the lowered level, and the copilot's next call learns it may no longer use the product for its intended use — before it produces a bad answer, not after. The recertification workflow is the operational teeth of "assurance you know remains safe tomorrow": the certification is only as good as its willingness to *withdraw itself* when the evidence changes, and the triggers are what make it willing. One accountability detail keeps the watchmen watched: the recertification pipeline is itself owned by the platform team as a tier-1 product, with its own monitoring — because a recert pipeline that fails silently leaves every certificate stale and no one the wiser.
 
 ## Where certification lives, and who signs it
 
@@ -100,7 +100,7 @@ Certification also cannot sit with one team, and getting the accountability dist
 
 ## Avoiding the theatre
 
-There is an obvious failure mode, and it must be named because it is the one that kills certification programmes: it becomes another governance gate. If every AI use case requires a long meeting, a static spreadsheet, and weeks of waiting, teams route around it, and you have added ceremony without assurance. The defence is the same structural point the whole book has made. Most of the evidence *already exists* — metadata in the catalogue, definitions in the glossary, quality in observability tools, lineage in pipelines, policy tags in governance tooling, contract validation in CI/CD, usage telemetry in the marketplace, test results in deployment. Certification should be a *visible outcome* of good product management, metadata, engineering, and governance working together — surfaced automatically — not a separate ceremony bolted on at the end. Discovery is not certification; access is not approval; usage is not assurance. The certification simply makes the difference legible.
+The obvious failure mode — the one that kills certification programmes — is that certification becomes another governance gate: a long meeting, a static spreadsheet, weeks of waiting, and teams routing around it. The defence is the structural point the whole book has made, and the peer-firm story below shows it in the flesh: most of the evidence *already exists*, so certification should be a *derived, visible outcome* of good product management, metadata, engineering, and governance — surfaced automatically — not a ceremony bolted on at the end. Discovery is not certification; access is not approval; usage is not assurance. Certification simply makes the difference legible.
 
 ## Proportionality: a second product, certified lower
 
@@ -122,6 +122,8 @@ The split matters: three dimensions are largely automatable (the machine confirm
 
 ### The economics, and a failure to avoid
 
+<!-- FIG 19.1: the certification pyramid — most products discoverable (L1), a middle band contextualised/controlled (L2–3), a small apex of high-stakes products fully certified (L4); the level is set by the use's stakes, not the product's importance. -->
+
 Certification has a cost curve: Level 1 is nearly free (it falls out of the catalogue), Level 2–3 cost the modelling and lineage work of Parts II–IV, and Level 4 adds the human attestation and sign-off effort. So the portfolio question is not "how do we certify everything" but "how many products, at which levels, is healthy" — a pyramid, with most products discoverable, a middle band contextualised, and a small apex of high-stakes products fully certified. Meridian's target: the bulk at L1–2, a wealth-domain band at L3, and a handful of client-facing AI products at L4.
 
 And the failure to avoid, stated plainly because it is the common one: certification becomes the governance gate it was meant to replace. A peer firm made every AI use case require a certification meeting, a static spreadsheet, and weeks of waiting — and teams routed around it, shipping uncertified products through side doors, which is worse than no programme because it drove the risk underground. The redesign that saved it: make certification a *derived, automated status* surfaced in the marketplace, requiring a meeting *only* for the human-attestation dimensions of high-stakes products. Certification that is faster than the workaround gets used; certification that is slower gets bypassed, and a bypassed certification is a false assurance, which is the most dangerous kind.
@@ -132,6 +134,11 @@ The phrase "AI-ready data" is not wrong because AI does not need data. It is wro
 
 The model in this chapter is the *framework*. What it looks like when a real assessment meets a real organisation — where the quality dashboard is green and the model still fails, where the catalogue cannot answer the question, where the auditor's questions land — is the substance of the next chapter, told through the people who lived it.
 
+## Further reading
+
+- On AI management systems and auditable governance, ISO/IEC 42001:2023 and the NIST AI Risk Management Framework (AI RMF 1.0).
+- On the certification model's lineage, the AI-readiness and data-certification practitioner literature; the blank record and per-dimension worksheet are in Appendix C.
+
 > **Chapter summary.** "AI-ready" is dangerously vague because it means different things to different teams; the fix is to treat it as a **certification outcome**, not a label. Readiness is *conditional* — ready for which use, which audience, which controls, what evidence — and cannot be self-declared, because AI carries no organisational memory. Certification assesses five dimensions — **meaning, quality, governance, consumption, operational readiness** — across a 0–5 level model (not assessed → continuously assured), certifying high-value/high-risk products at the top and leaving others merely discoverable. It must be *derived* from existing evidence (not authored), *live in the product/contract* (not a drifting register), be *queryable by agents before consumption*, and *reassess when evidence changes*. Accountability is shared; if no one will sign off the use, it is not ready. Avoid turning it into a governance gate — the evidence mostly already exists.
 
-> **Try this.** Pick your highest-stakes AI use case and write its certification statement in one paragraph: this product, certified at level N for *this* use, prohibited for *these* uses, on *this* evidence, signed by *this* named owner, reassessed on *these* triggers. If you cannot name the owner who would sign, you have found the gap Chapter 20 is about.
+> **Try this.** Pick your highest-stakes AI use case and write its certification statement in one paragraph: this product, certified at level N for *this* use, prohibited for *these* uses, on *this* evidence, signed by *this* named owner, reassessed on *these* triggers. If you cannot name the owner who would sign, you have found the gap Chapter 21 is about.

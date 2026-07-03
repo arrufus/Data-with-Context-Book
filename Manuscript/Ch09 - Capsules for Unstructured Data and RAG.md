@@ -1,6 +1,6 @@
-# Chapter 8A — Capsules for Unstructured Data and RAG
+# Chapter 9 — Capsules for Unstructured Data and RAG
 
-> **Where you are:** Part II — *Bind*, extension chapter. Chapters 5–8 bound context to structured data — tables, features, streams. But the data most AI consumes in 2026 is neither structured nor tabular; it is *documents and embeddings*. This chapter extends the capsule discipline to unstructured data and the retrieval-augmented systems that consume it. It is the archetype Chapter 4 named the "RAG hallucination," addressed. Maturity note: it brings the same Level 1 binding to the half of the estate the earlier chapters left ungoverned.
+> **Where you are:** Part II — *Bind*, final chapter. Chapters 5–8 bound context to structured data — tables, features, streams. But the data most AI consumes in 2026 is neither structured nor tabular; it is *documents and embeddings*. This chapter extends the capsule discipline to unstructured data and the retrieval-augmented systems that consume it. It is the archetype Chapter 4 named the "RAG hallucination," addressed. Maturity note: it brings the same Level 1 binding to the half of the estate the earlier chapters left ungoverned.
 
 ---
 
@@ -8,13 +8,13 @@
 
 Six months after the Okonkwo error, Meridian's adviser copilot gave another confident, wrong answer — and this time no table was to blame. An adviser asked, "What's our house view on emerging-market debt for a conservative client right now?" The copilot retrieved a research note, summarised it fluently, and recommended a modest allocation. The note it retrieved had been *superseded three months earlier* — the house view had since turned cautious on EM debt after a sovereign downgrade — but the withdrawn note was still sitting in the vector index, still semantically similar to the query, still retrievable, with nothing recording that it had been withdrawn. The copilot did not know the note was stale. It knew the note was *relevant*. Relevance and currency are different properties, and the index tracked only the first.
 
-This is the RAG hallucination archetype from Chapter 4, in the flesh, and it is worth dwelling on why the whole apparatus of Part II so far would not have caught it. `client_holdings` was a capsule. The suitability model trained on a capsule. The position stream was a capsule. And none of it touched the research note, because the research note is not a row in a table — it is a PDF, chunked into passages, embedded into vectors, and stored in an index that no capsule governed. The most consequential data Meridian's copilot consumes is *unstructured*, and the discipline of the last four chapters, for all its rigour, stopped at the edge of the structured estate.
+This is the RAG hallucination archetype from Chapter 4, in the flesh — and what matters is why the whole apparatus of Part II so far would not have caught it. `client_holdings` was a capsule. The suitability model trained on a capsule. The position stream was a capsule. And none of it touched the research note, because the research note is not a row in a table — it is a PDF, chunked into passages, embedded into vectors, and stored in an index that no capsule governed. The most consequential data Meridian's copilot consumes is *unstructured*, and the discipline of the last four chapters, for all its rigour, stopped at the edge of the structured estate.
 
-That edge is where most enterprises now live. The copilots, assistants, and agents being built in 2026 are overwhelmingly retrieval-augmented: they answer by retrieving documents — policies, research notes, contracts, manuals, tickets, emails — and grounding a generated answer in them. The data they consume is text, and the pipeline that prepares it (chunk, embed, index) is a data pipeline like any other, with all the same ways to drift, mislead, and leak. If Part II governs only the tabular half of the estate, it has left the AI-facing half — the half the agent actually reads — completely ungoverned. This chapter closes that gap.
+That edge is where most enterprises now live. The copilots, assistants, and agents being built in 2026 are, in the dominant enterprise pattern, retrieval-augmented: they answer by retrieving documents — policies, research notes, contracts, manuals, tickets, emails — and grounding a generated answer in them. The data they consume is text, and the pipeline that prepares it (chunk, embed, index) is a data pipeline like any other, with all the same ways to drift, mislead, and leak. If Part II governs only the tabular half of the estate, it has left the AI-facing half — the half the agent actually reads — completely ungoverned. This chapter closes that gap.
 
 ## Why unstructured data breaks every rule so far
 
-Everything in Chapters 5–8 rested on properties that a document simply does not have, and naming the mismatches is the fastest way to see why unstructured data needs its own treatment rather than a hand-wave.
+Everything in Chapters 5–8 rested on properties that a document simply does not have. Four mismatches show why unstructured data needs its own treatment.
 
 **No schema.** A table has columns with types; a document has prose. There is no `em_exposure_pct` field to bind a definition to — the meaning is diffuse, spread across paragraphs, implicit. The structural-metadata component of the capsule, which for a table is the schema, has to be reconceived for a document, because there is no shape to enforce.
 
@@ -45,7 +45,7 @@ lifecycle:
   superseded_by: house_view_em_debt@5.0.0
 semantics:
   topic: "emerging-market debt house view"
-  entities: [asset_class:EQ-EM, risk_appetite]
+  entities: [asset_class:FI-EM, risk_appetite]
   summary: "Constructive on EM debt for moderate+ risk; see v5 for revised view"
 classification: internal
 permitted_uses:
@@ -54,7 +54,7 @@ prohibited_uses:
   - client_facing_verbatim_quotation
 retrieval:
   chunking: { strategy: heading_aware, target_tokens: 400, overlap: 40 }
-  embedding_model: "text-embed-3-large@2025-11"
+  embedding_model: "meridian-embed-2@2025-11"
   index: research_emd_v4
 lineage:
   chunks: 18
@@ -63,11 +63,15 @@ lineage:
 
 Read what this binds that a bare document in a drive does not. The **content hash** binds *this specific PDF* to the capsule, so replacing the file is a version event, not a silent swap — co-versioning for unstructured payloads means the hash changes when the bytes change. The **lifecycle block** is the fix for the opening disaster: `status: superseded`, `effective_to`, and `superseded_by` are machine-readable facts a retrieval system can *filter on*, so a withdrawn note can be excluded from retrieval the instant it is withdrawn. The **permitted_uses** state that copilot retrieval is allowed *only when published* — policy travelling with the document. And the **retrieval block** records the chunking strategy and, crucially, the *embedding-model version*, because — as the next section argues — the embedding is a derived artefact whose provenance matters as much as the data's.
 
+The state names differ from a table capsule's on purpose. A table capsule moves Draft → Review → Published → Deprecated → Retired (Chapter 5); a document capsule moves draft → published → superseded → withdrawn. The two map cleanly — *superseded* is a deprecation with a named replacement (`superseded_by`), *withdrawn* is a retirement for cause — but documents earn their own verbs, because a document is replaced by a *newer document* rather than deprecated on a schedule, and "withdrawn" (pulled for compliance) is a distinct, faster event than a table's planned retirement. Text is the worked example here; the same discipline — content hash, lifecycle, lineage, retrieval filters — generalises to images, audio, and tables-in-PDFs, with only the chunking and embedding specifics changing.
+
 The document capsule does for the research note what `client_holdings` did for the holdings: it makes the document a governed, owned, lifecycle-managed product rather than a file in a swamp. And it gives the retrieval system the one fact it was missing — that relevance is not currency, and here is how to tell them apart.
 
 ## Chunking and embedding are transformations with lineage
 
 The step most RAG systems treat as invisible plumbing — turn documents into chunks, chunks into embeddings, embeddings into index entries — is in fact a *data pipeline*, with inputs, transformations, and outputs, and it deserves lineage exactly as a Spark job does. Making that pipeline legible is what lets you answer, when an agent gives a bad answer, *which chunk of which version of which document, embedded by which model, produced it.*
+
+<!-- FIG 9.1: RAG derivation chain — source document (capsule) → chunks (inherit lifecycle status) → embeddings (model-versioned) → index entries (metadata-filtered at retrieval); a correction at the source must propagate down all four layers. -->
 
 Model the pipeline as three tracked transformations, each emitting OpenLineage events:
 
@@ -103,13 +107,13 @@ The discipline, then, is that a vector index is provisioned and governed like an
 
 ## Freshness and revocation: the hardest lineage problem in RAG
 
-The document capsule's lifecycle block promises that a correction propagates; delivering on that promise is genuinely hard, and it is worth being honest that this is the frontier where RAG governance is least mature. The difficulty is the *derivation chain*. A source document is corrected or withdrawn. But the document has been chunked, the chunks embedded, the embeddings indexed, and answers may have been cached. A correction at the source has to propagate through all four derivative layers, and most systems propagate it through none.
+The document capsule's lifecycle block promises that a correction propagates; delivering on that promise is genuinely hard, and this is the frontier where RAG governance is least mature. The difficulty is the *derivation chain*. A source document is corrected or withdrawn. But the document has been chunked, the chunks embedded, the embeddings indexed, and answers may have been cached. A correction at the source has to propagate through all four derivative layers, and most systems propagate it through none.
 
 Two cases, both of which Meridian has to handle:
 
 **Supersession.** The EM-debt house view is replaced. The moment the new version is published, the old capsule flips to `status: superseded` — and because that status is a metadata field on every chunk and every vector derived from it, the retrieval filter (`lifecycle_status: published`) *immediately* stops the old chunks from being retrieved, without re-embedding anything. This is the elegant case: because lifecycle status was bound as filterable metadata, revocation is a metadata update, not a re-indexing project. The withdrawn note becomes unretrievable the instant it is withdrawn.
 
-**Erasure (right to be forgotten).** A client exercises a GDPR erasure right, and their personal data must be removed from everywhere — including any chunk of any document that mentions them, the embeddings of those chunks, and any cache. This is the hard case, because erasure means *deletion*, not filtering, and it must reach every derivative. The document capsule's lineage — which chunks came from which document, which vectors from which chunks — is what makes this tractable: erasure becomes a traversal that finds and deletes every derived artefact, with the capsule as the anchor. Without that lineage, erasure in a RAG system is a hope, and "we think we removed it" is not an answer a regulator accepts. Caches are the trap here: an answer generated last week and cached may contain the very data just erased, so caches must carry TTLs short enough, or invalidation hooks precise enough, that erased content cannot survive in them.
+**Erasure (right to be forgotten).** A client exercises a GDPR erasure right, and their personal data must be removed from everywhere — including any chunk of any document that mentions them, the embeddings of those chunks, and any cache. This is the hard case, because erasure means *deletion*, not filtering, and it must reach every derivative. (Whether an embedding itself constitutes personal data is still legally unsettled; Meridian's posture is to delete rather than argue the point.) The document capsule's lineage — which chunks came from which document, which vectors from which chunks — is what makes this tractable: erasure becomes a traversal that finds and deletes every derived artefact, with the capsule as the anchor. Without that lineage, erasure in a RAG system is a hope, and "we think we removed it" is not an answer a regulator accepts. Caches are the trap here: an answer generated last week and cached may contain the very data just erased, so caches must carry TTLs short enough, or invalidation hooks precise enough, that erased content cannot survive in them.
 
 The principle underneath both: **in a RAG system, a correction is only as propagable as the lineage from source to served answer.** The document capsule exists to make that lineage explicit, so that supersession is a filter update and erasure is a bounded traversal, rather than either being a manual sweep of a swamp.
 
@@ -128,6 +132,12 @@ These evaluations are not a one-off acceptance test; they are continuous, versio
 Run the opening scene again with the discipline in place. The EM-debt house view is a document capsule; when the cautious view replaces it, the old capsule flips to `superseded` and every chunk derived from it inherits the status. The adviser asks the copilot for the house view; the retrieval filter excludes superseded and out-of-effective-range chunks, so the withdrawn note is never retrieved; the copilot grounds its answer in the *current* view, and the groundedness gate confirms the answer follows from it. No withdrawn guidance, no confident wrong answer, no mis-advice with a compliance tail. The fix was not a better model. It was, once again, binding context to data — this time to the document, the chunk, and the vector — so the AI consumes current, permitted, evidenced context rather than whatever was merely similar.
 
 This completes the *Bind* move for the whole estate, structured and unstructured alike. Part II has now given Meridian capsules for tables (Chapter 6), for training data and features and streams (Chapter 7), for the models that make meaning stable (Chapter 8), and for documents and embeddings (this chapter) — the full surface an AI consumer actually reads. What none of it has yet solved is *scale*: all of this binding has been described as something a team does deliberately, dataset by dataset, document corpus by document corpus. The moment Meridian has hundreds of capsules across both halves of the estate, the binding has to become something the platform maintains automatically — versioned, tested, event-driven, enforced. That is the second move, and Part III begins it.
+
+## Further reading
+
+- On RAG evaluation, the retrieval-quality and groundedness/faithfulness literature and frameworks (e.g. RAGAS, TruLens) — the "Great Expectations for RAG" this chapter argues for.
+- On chunking and retrieval design, the vector-database vendor guides (and the trade-offs between fixed-size and structure-aware chunking).
+- On erasure and derived data, the UK GDPR / EU GDPR right-to-erasure provisions and the (still-forming) regulatory guidance on embeddings and model-derived artefacts.
 
 > **Chapter summary.** The data most AI consumes in 2026 is unstructured — documents and embeddings — and Chapters 5–8 left it ungoverned, producing the "document swamp": a vector index into which content is poured with no schema, grain, ownership, or lifecycle, and out of which an agent retrieves consequential answers. Unstructured data breaks the capsule's assumptions (no schema, no grain, no owner, no update semantics), so the capsule is reconceived as a **document capsule** binding source, content hash, lifecycle (published/superseded/withdrawn with effective dates and `superseded_by`), semantics, permitted uses, and the chunking/embedding config. Chunking and embedding are *transformations with lineage* (and re-embedding is a version event); the **vector index is a governed serving layer** whose metadata filters enforce currency, entitlement, and policy at retrieval time — an unfiltered index is an uncontrolled consumer. Freshness and erasure propagate only as far as the lineage allows, so the capsule anchors both. **Evaluation** (retrieval-quality and groundedness gates) is the quality gate for RAG. This completes *Bind* for the whole estate.
 

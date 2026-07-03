@@ -22,9 +22,9 @@ This chapter is about the discipline that would have prevented that answer. Not 
 
 It is tempting to read the Okonkwo story as a failure of communication — if only the two teams had agreed on what "emerging markets" meant, if only someone had written it down. But people *had* written it down. The retail definition lived in a glossary in Confluence. The institutional definition lived in a different team's Confluence space. The reconciliation rule lived in someone's head and, partially, in a comment inside a dbt model. The data itself — the actual numbers flowing through the platform — carried none of this. It carried values. The meaning of those values lived everywhere except next to them.
 
-This is not a Meridian problem. It is the default condition of nearly every data platform built in the last twenty years, and it is an artifact of how those platforms evolved rather than a choice anyone made.
+This is not a Meridian problem. It is the default condition of nearly every data platform built in the last twenty years, and it is an artefact of how those platforms evolved rather than a choice anyone made.
 
-Data lives in one place: databases, object stores, files, queues. Metadata — the schema, the definitions, the quality rules, the ownership, the lineage, the policy — lives somewhere else: in catalogs, wikis, slide decks, ETL repositories, the tribal memory of whoever has been on the team longest. The two are connected by convention and good intentions, which is to say they are connected by nothing enforceable. So they drift. A column is renamed in production but not in the catalog. A definition is agreed in a meeting but never propagated to the dataset. A retention policy is set in a governance forum and never reaches the table it governs. Each drift is small. Together they are the reason your engineers spend their afternoons in Slack asking "what does this column actually mean?" and your governance team spends its quarters reconstructing documentation that was out of date the day it was published.
+Data lives in one place: databases, object stores, files, queues. Metadata — the schema, the definitions, the quality rules, the ownership, the lineage, the policy — lives somewhere else: in catalogues, wikis, slide decks, ETL repositories, the tribal memory of whoever has been on the team longest. The two are connected by convention and good intentions, which is to say they are connected by nothing enforceable. So they drift. A column is renamed in production but not in the catalogue. A definition is agreed in a meeting but never propagated to the dataset. A retention policy is set in a governance forum and never reaches the table it governs. Each drift is small. Together they are the reason your engineers spend their afternoons in Slack asking "what does this column actually mean?" and your governance team spends its quarters reconstructing documentation that was out of date the day it was published.
 
 At small scale, this is tolerable. The team is small enough that the tribal knowledge holds. At enterprise scale — under regulatory scrutiny, with AI models training on the data and AI agents reasoning over it in production — it stops being tolerable and becomes a liability you are carrying on the books whether or not you have named it.
 
@@ -32,7 +32,9 @@ The fix is not more documentation. More documentation, disconnected from the dat
 
 ## What a Data Capsule is
 
-A **Data Capsule** is a logical unit in which the data payload and the context that makes it interpretable are **bound together and versioned together**, so that they cannot move or change independently without someone noticing. The term is borrowed loosely from privacy research, but the idea is older than the name and, once you see it, faintly obvious: data should never travel alone.
+A **Data Capsule** is a logical unit in which the data payload and the context that makes it interpretable are **bound together and versioned together**, so that they cannot move or change independently without someone noticing. The idea is older than any name for it and, once you see it, faintly obvious: data should never travel alone.
+
+<!-- FIG 5.1: capsule anatomy — seven components (payload, structural, semantic, quality, policy, provenance, contract) bound and co-versioned around one data payload. -->
 
 A complete capsule binds seven components.
 
@@ -58,7 +60,7 @@ A common misreading is that a capsule requires stuffing all seven components phy
 
 - **Strong binding.** Stable identifiers and enforced references between the data and its context, so that you can always get from one to the other and the link cannot silently break.
 - **Co-versioning.** When the data changes, its metadata changes in the same act. Version 4 of the schema, the quality suite that goes with version 4, and the contract that version 4 promises all move as one.
-- **Deployability as one unit.** The whole thing ships through CI/CD as a single artifact, not assembled by hand from parts that were deployed separately and hopefully match.
+- **Deployability as one unit.** The whole thing ships through CI/CD as a single artefact, not assembled by hand from parts that were deployed separately and hopefully match.
 
 In practice this means some metadata travels *in* the data — the schema and statistics that a query engine needs immediately — while richer, heavier metadata is *referenced* by stable identifier and versioned alongside. We will make that hot-versus-cold distinction concrete in the next chapter. The principle to hold onto here is that binding is about enforced, co-versioned reference, not about cramming everything into one place.
 
@@ -66,7 +68,7 @@ In practice this means some metadata travels *in* the data — the schema and st
 
 If this sounds like it requires inventing new infrastructure, it does not. Most of what a capsule needs already exists in systems you are probably already running. The discipline is mostly a matter of using these capabilities deliberately, together, instead of accidentally and apart.
 
-**Self-describing file formats** already embed metadata with data. Parquet, ORC, Avro, and Arrow carry their schema and column statistics inside the file. Copy a Parquet file to a new system and the schema travels with it — no catalog lookup required. Scientific formats like HDF5, NetCDF, and FITS have done this for decades, because the people using them learned early that shipping data without its context produces irreproducible results, which in science is the only kind of result that doesn't count.
+**Self-describing file formats** already embed metadata with data. Parquet, ORC, Avro, and Arrow carry their schema and column statistics inside the file. Copy a Parquet file to a new system and the schema travels with it — no catalogue lookup required. Scientific formats like HDF5, NetCDF, and FITS have done this for decades, because the people using them learned early that shipping data without its context produces irreproducible results, which in science is the only kind of result that doesn't count.
 
 **Open table formats** take the idea up a level and make an entire table behave like a capsule. Apache Iceberg defines a table as data files plus manifest and metadata files that track schema evolution, partitioning, snapshots, and statistics — reference the table and you get all of it together. Delta Lake represents a table as data files plus a transaction log recording every change and schema version, which is why time travel and ACID guarantees work at all: data and metadata evolve in the same log. Apache Hudi maintains a commit timeline tracking every file version and operation as part of the table's identity.
 
@@ -92,7 +94,9 @@ The model was never the problem. The data was never *dirty*. The data simply cou
 
 ## The capsule as code
 
-Here is what Meridian's client-holdings dataset looks like when its context is bound to it and expressed as a single, version-controlled definition. This is the artifact that lives in Git, travels through CI/CD, and serves as the source of truth from which catalogs and dashboards are merely views.
+Here is what Meridian's client-holdings dataset looks like when its context is bound to it and expressed as a single, version-controlled definition. This is the artefact that lives in Git, travels through CI/CD, and serves as the source of truth from which catalogues and dashboards are merely views.
+
+**Listing 5.1 — the `client_holdings` capsule** (the source of truth Chapter 6 deploys from).
 
 ```yaml
 data_product: client_holdings
@@ -191,7 +195,7 @@ lineage:
 
 Read that definition and notice what it is. It is not documentation *about* the data; it is a specification that the data is deployed *from* and validated *against*. The semantic rule about frontier markets is not a note someone might find — it is a machine-readable warning bound to the field, sitting in the path of any consumer or any CI check. The quality expectations are not aspirations — they gate promotion. The approved and prohibited uses are not a governance slide — they are the policy the platform can enforce. The owner is not a name on a wiki — it is a person with a contact and a pager.
 
-This single artifact *is* the capsule description: data, semantics, policy, contract, and lineage identifiers, defined and versioned together. Everything in the rest of Part II is about where this lives and how it runs.
+This single artefact *is* the capsule description: data, semantics, policy, contract, and lineage identifiers, defined and versioned together. Everything in the rest of Part II is about where this lives and how it runs.
 
 ### The capsule and the Open Data Contract Standard
 
@@ -231,7 +235,7 @@ The 4.0.0 row is the important one: *the schema did not change, and it was still
 
 ### The capsule lifecycle
 
-A capsule is not born certified and does not live forever; it moves through a lifecycle with a gate at each transition, and naming the gates is what keeps the discipline honest.
+A capsule is not born certified and does not live forever; it moves through a lifecycle, with a gate at each transition.
 
 - **Draft** — the capsule exists in a branch; schema and semantics are being worked out. No consumer depends on it. *Gate to next:* owner review and a passing test suite.
 - **Review** — proposed for publication; the domain owner (Maya) and affected consumers review the contract, especially the semantics and policy. *Gate:* sign-off recorded in the PR.
@@ -243,9 +247,9 @@ The lifecycle matters because it is the answer to the lake's "permanent hoarding
 
 ## What you get the moment data and metadata are bound
 
-Binding is not an aesthetic preference. It produces specific, compounding benefits, and it is worth being concrete about them because they are what you will use to justify the work.
+Binding is not an aesthetic preference. Six things change the day the context is bound, and they are what you will be asked to show for the effort.
 
-**Ambiguity drops, because meaning travels with the data.** Consumers derive structure, meaning, and usage rules from the artifact itself. The "what timezone are these timestamps in?" and "is this the CRM customer ID or the billing one?" questions stop arriving in your Slack, because the answer is bound to the field. Reliance on tribal knowledge — the single most fragile dependency in any data team — falls.
+**Ambiguity drops, because meaning travels with the data.** Consumers derive structure, meaning, and usage rules from the artefact itself. The "what timezone are these timestamps in?" and "is this the CRM customer ID or the billing one?" questions stop arriving in your Slack, because the answer is bound to the field. Reliance on tribal knowledge — the single most fragile dependency in any data team — falls.
 
 **Contracts become enforceable instead of aspirational.** When schema, expectations, and policy are bound to the dataset, breaking changes get caught in CI/CD rather than in a production incident. "We have a convention" is replaced by "we have a test that enforces this," which is the only kind of convention that survives contact with a deadline and a reorg.
 
@@ -253,7 +257,7 @@ Binding is not an aesthetic preference. It produces specific, compounding benefi
 
 **Lineage and auditability become reliable.** Provenance is captured at production time and anchored in the dataset, so the regulator's "where did this come from?" is answerable from the data rather than from a heroic reconstruction. This is the difference between an audit you pass and an audit that pauses your model — a distinction we will return to in Part V, because it is the one that decides whether your AI initiative ships.
 
-**The platform becomes resilient to its own tooling.** If the catalog is down or the documentation portal is stale, the dataset remains interpretable, because its essential context lives with it. The catalog becomes an index over authoritative metadata rather than a fragile single point of truth.
+**The platform becomes resilient to its own tooling.** If the catalogue is down or the documentation portal is stale, the dataset remains interpretable, because its essential context lives with it. The catalogue becomes an index over authoritative metadata rather than a fragile single point of truth.
 
 **And the data becomes AI-ready in the only sense that matters.** Tools and agents can inspect schema, constraints, and policy directly from the capsule — to propose mappings, check compatibility, generate tests, or detect a policy violation *before* execution. AI-ready data, as we will argue at length, is not clean data. It is data that can produce evidence about itself on demand. A capsule is the unit that can.
 
@@ -277,7 +281,7 @@ datasets:
     schema:
       primary_key: [asset_class_code]
       fields:
-        - { name: asset_class_code, type: string, description: "Meridian taxonomy code, e.g. EQ-EM" }
+        - { name: asset_class_code, type: string, description: "Meridian taxonomy code, e.g. EQ-EM (equity) or FI-EM (fixed income)" }
         - { name: name, type: string, description: "Human-readable class name" }
         - { name: parent_code, type: string, description: "Parent class; null at root" }
         - { name: is_emerging_market, type: boolean, description: "EM flag — see semantics" }
@@ -302,23 +306,23 @@ Notice how much this small capsule earns. It pins down, in one governed place, t
 
 ## Three capsule anti-patterns
 
-Naming the ways capsules go wrong is as useful as defining the capsule, because each anti-pattern is a plausible-looking failure that a well-intentioned team will drift into.
+Each of these anti-patterns is a plausible-looking failure that a well-intentioned team will drift into.
 
 **The documentation capsule.** A YAML file exists, it has all seven sections, it looks like a capsule — and *nothing enforces it.* The quality expectations do not gate deployment; the semantics are not read by any consumer; the version is bumped by hand when someone remembers. This is the catalogue disease of Chapter 3 in a new file format: a description beside the data, drifting from it. The tell is that you could change the data without the capsule failing anything. A capsule that cannot fail a build is documentation wearing a capsule's clothes.
 
 **The kitchen-sink capsule.** Every conceivable piece of metadata is stuffed in — every downstream note, every historical caveat, every tangential policy — until the capsule is so large that no one maintains it and its signal drowns in its own completeness. The hot/cold distinction from the next chapter is the discipline that prevents this: embed what a consumer needs *now*, reference the rest. A capsule is a contract, not an archive.
 
-**The orphan capsule.** A beautifully specified capsule with no named owner and no registered consumer — governance performed for its own sake. With no consumer, no one notices when it drifts; with no owner, no one can fix it if they did. This is the failure Chapter 19 returns to as the ownership surface: a perfect description of a thing nobody answers for is still an orphan. Every capsule should be able to name, from day one, the person who owns it and at least one consumer who would notice if it broke.
+**The orphan capsule.** A beautifully specified capsule with no named owner and no registered consumer — governance performed for its own sake. With no consumer, no one notices when it drifts; with no owner, no one can fix it if they did. This is the failure Chapter 20 returns to as the ownership surface: a perfect description of a thing nobody answers for is still an orphan. Every capsule should be able to name, from day one, the person who owns it and at least one consumer who would notice if it broke.
 
 The three share a root: a capsule is only real when it is *enforced, bounded, and owned.* A YAML file is necessary and nowhere near sufficient.
 
 ## Why it is still hard
 
-Honesty requires naming the difficulty, because a discipline sold as effortless gets abandoned the first time it costs something.
+A discipline sold as effortless gets abandoned the first time it costs something. Here is what makes capsules genuinely hard.
 
 **Legacy and heterogeneity.** Meridian, like any firm its age, runs a mix of old relational systems, a mainframe in the corner that processes settlements, petabytes of CSV and Excel in object storage, and BI tools with business logic baked into them. You will not retrofit atomic units across all of it, and you should not try. The realistic move is to start with new pipelines and the handful of datasets where ambiguity already hurts, and to define migration patterns rather than attempt heroic rewrites.
 
-**Tooling fragmentation.** Iceberg, Snowflake, and BigQuery describe schema, policy, and lineage in incompatible ways. Binding across them requires deliberate translation layers and some compromise. This is real work, and Chapter 12 is about doing it with open standards so the work is done once rather than per-tool.
+**Tooling fragmentation.** Iceberg, Snowflake, and BigQuery describe schema, policy, and lineage in incompatible ways. Binding across them requires deliberate translation layers and some compromise. This is real work, and Chapter 13 is about doing it with open standards so the work is done once rather than per-tool.
 
 **Some metadata is more sensitive than the data.** Internal topology, contractual constraints, and the structure of your controls can be more revealing than the records themselves. Binding metadata to data does not mean exposing all of it to everyone; it means layered metadata, encryption, and role-aware views. The capsule is bound, not naked.
 
@@ -332,8 +336,14 @@ The mental shift the rest of this book asks you to make is small to state and la
 
 Meridian's data was good and still produced a wrong, consequential answer, because good is the wrong target. The target is data that can explain and defend itself — data with its context bound, co-versioned, and deployable as one unit. That is a Data Capsule, and naming it is the first move.
 
-In maturity terms, defining your first capsule — taking one important dataset and binding agreed definitions, quality expectations, policy, and ownership to it — moves that dataset from **Level 0 (Flat: technical metadata only)** to **Level 1 (Defined: business meaning agreed and linked)**. It is one dataset, not the enterprise. That is deliberate. Capsules are adopted one high-value dataset at a time, and the next chapter shows where that first capsule actually lives: not in a catalog, not in a wiki, but in the table format your data already sits on.
+In maturity terms, defining your first capsule — taking one important dataset and binding agreed definitions, quality expectations, policy, and ownership to it — moves that dataset from **Level 0 (Flat: technical metadata only)** to **Level 1 (Defined: business meaning agreed and linked)**. It is one dataset, not the enterprise. That is deliberate. Capsules are adopted one high-value dataset at a time, and the next chapter shows where that first capsule actually lives: not in a catalogue, not in a wiki, but in the table format your data already sits on.
 
-> **Chapter summary.** Data and metadata drift apart by default, an artifact of how platforms evolved rather than anyone's carelessness — and at AI scale, that drift turns good data into confident wrong answers. A **Data Capsule** binds seven components (payload, structural, semantic, quality, policy, provenance, contract) into a single, co-versioned, CI/CD-deployable unit. Binding means enforced reference and co-versioning, not physical colocation. The technology already exists; what is usually missing is the decision to make "data plus context, atomic" the default. Defining your first capsule takes one dataset from Level 0 to Level 1.
+## Further reading
+
+- The *Open Data Contract Standard* (ODCS), maintained by the Bitol project under the Linux Foundation AI & Data — the specification the capsule maps onto; pin to ODCS v3.x for durability. Appendix A gives the field-by-field mapping.
+- On self-describing formats, the Apache Parquet, ORC, and Avro specifications; on open table formats, the Apache Iceberg, Delta Lake, and Apache Hudi documentation (all developed in Chapter 6).
+- On semantic versioning as adapted here, the *Semantic Versioning* specification (semver.org) — read alongside this chapter's argument that a semantic redefinition is a major change even when the schema is untouched.
+
+> **Chapter summary.** Data and metadata drift apart by default, an artefact of how platforms evolved rather than anyone's carelessness — and at AI scale, that drift turns good data into confident wrong answers. A **Data Capsule** binds seven components (payload, structural, semantic, quality, policy, provenance, contract) into a single, co-versioned, CI/CD-deployable unit. Binding means enforced reference and co-versioning, not physical colocation. The technology already exists; what is usually missing is the decision to make "data plus context, atomic" the default. Defining your first capsule takes one dataset from Level 0 to Level 1.
 
 > **Try this.** Take the one dataset whose meaning your team argues about most. Write its capsule definition — the seven components, in YAML, in a repo. You will discover, in the act of writing the semantic and policy sections, exactly which of your "agreed" definitions are not actually agreed. That discovery is the point.
