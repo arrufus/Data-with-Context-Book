@@ -98,6 +98,19 @@ These can live as a standalone suite or, more conveniently for a dbt shop, as `d
 
 Take the four together and the value compounds: OpenLineage answers *what transformed what*, dbt artefacts capture *how it was transformed and what it means*, AsyncAPI governs *data in motion*, and Great Expectations enforces *whether it is good enough*. All four are open, all four keep your metadata portable, and all four produce machine-readable artefacts that the rest of the stack can consume. Portability is not a purity concern; it is what lets Meridian change a warehouse vendor in three years without re-implementing its entire governance layer.
 
+### What each standard covers — and what none of them does
+
+Four standards, four surfaces; it helps to see the coverage as a grid, because the gaps are as instructive as the coverage.
+
+| Standard | Captures | Where it runs | Maturity |
+|----------|----------|---------------|----------|
+| OpenLineage | job→dataset lineage, run facets | orchestrators, engines | high, 40+ integrations |
+| dbt artefacts | transformation graph, tests, docs, meta | every dbt run | high (dbt shops) |
+| AsyncAPI | event/stream contracts, payload schemas | CI, gateways, registries | growing |
+| Great Expectations | executable quality assertions | CI, pipelines | high |
+
+Now the honest part: several important surfaces are covered by *none* of these, and a team that assumes the four standards are complete will be surprised. **Business-glossary exchange** — moving governed term definitions between systems — has no dominant open standard; you bridge it with custom properties and, at the semantic layer, the vocabularies of Chapter 12. **Policy-language portability** — expressing "mask this for that role" once and enforcing it across Snowflake, Iceberg, and BigQuery — is not standardised; each platform has its own dialect, which is why Chapter 12's integrator has to translate. **BI-tool lineage** — the last hop from a warehouse table to the dashboard or copilot that consumes it — is frequently missing, because BI tools are inconsistent about emitting it; the pragmatic bridge is the external-lineage APIs below. Naming these gaps is not a criticism of the standards; it is the map of where you will still have to build glue, and knowing it up front is what keeps the "assembled stack" from having silent holes.
+
 ## Platform-native features: where the standards get teeth
 
 Open standards keep metadata portable, but enforcement happens inside the platform your data actually lives on. The major platforms now ship first-class governance features that turn a classification tag into an automatically applied control. Meridian runs Iceberg as its primary lakehouse with a Snowflake footprint for certain analytics marts, so it uses a mix of these; the patterns generalise across vendors.
@@ -135,6 +148,26 @@ action:
 
 Notice what just happened: a new column appeared, and the platform classified it, protected it, tested it, and queued it for review — with no human in the loop until the moment human judgement is actually needed. That is governance as a system behaviour rather than a meeting, and it is the whole subject of Chapter 11.
 
+### The platform matrix
+
+Which native hook lives where is the practical question when you assemble the stack, so here is the matrix across the platforms Meridian and its peers actually run, including the open-source metadata backends:
+
+| Platform | Tags / classification | Column masking / access | Lineage | Contracts |
+|----------|:---:|:---:|:---:|:---:|
+| Snowflake | object tags | tag-based masking, row policies | Access History, external | dbt/GX in CI |
+| Databricks / Unity | tags | ABAC, column masks | built-in + external API | dbt/GX in CI |
+| BigQuery | policy tags | column-level ACL, DLP | Data Catalog lineage | dbt/GX in CI |
+| Microsoft Fabric / Purview | sensitivity labels | Purview policies | Purview lineage | via ADF / connectors |
+| DataHub (OSS) | tags, terms | — (indexes external) | OpenLineage ingest | contract assertions |
+| OpenMetadata (OSS) | tags, glossary | — | OpenLineage ingest | test integration |
+| Marquez (OSS) | — | — | OpenLineage reference store | — |
+
+The reading is not "pick the platform with the most ticks"; it is "know which slot each control lives in, because your capsule declares the policy and the *platform* enforces it." Meridian runs Iceberg with a governance-capable catalog for enforcement and DataHub as the open, cross-platform index — a deliberate split so no single vendor owns the metadata.
+
+### Testing the metadata itself
+
+One discipline is easy to forget: if metadata is code, it should be *tested* like code, not just used to test data. Meridian runs three kinds of metadata test. **Unit tests on policies** — assert that the PII masking policy actually redacts for an analyst role and reveals for a compliance role, run in CI whenever `policies/` changes, so a policy that silently stops masking fails the build. **Contract tests between specs** — assert that a consumer's expected schema is still satisfied by a producer's contract, so an incompatibility surfaces at the seam before deployment. **Smoke tests post-deploy** — after a capsule ships, confirm the live table's tags, masking, and lineage match what the spec declared (the reconciliation check of Chapter 9, run as a gate). Testing the metadata closes the loop the whole part is built on: metadata that governs data is itself governed, versioned, and verified, rather than trusted.
+
 ## Wiring it together
 
 These pieces are not a pile of tools; they assemble into a coherent flow, and it is worth seeing the shape so the parts do not feel like a shopping list. Picture six layers, with metadata flowing through and feeding back:
@@ -147,6 +180,18 @@ These pieces are not a pile of tools; they assemble into a coherent flow, and it
 6. **Consumption** — discovery, analytics, BI, the copilot, and external integrations like Slack and Jira.
 
 The flow is not strictly one-directional; assets move laterally and feed back, stewards' enrichments flowing back to source (a pattern Chapter 13 makes precise). The four insights that hold the architecture together are worth committing to memory: **open standards** ensure portability and prevent lock-in; **platform features** provide deep enforcement; **event-driven automation** delivers real-time governance without manual intervention; and **version control** underneath all of it makes every change traceable and reversible. Together they turn metadata from a documentation burden into an active participant in how the platform runs.
+
+## One change, traced through the whole stack
+
+The best way to see the assembled stack is to follow a single change through it, because the value is not in any one component but in the *sequence* they fire in. Take the change that opened Chapter 9 — a custodian renames `acct_status` to `account_status` — and trace it through Meridian's toolchain, now assembled:
+
+1. **The custodian's stream** carries the change; the **AsyncAPI contract** in the schema registry is set full-compatible, so the registry *rejects* the incompatible field rename at publish — and the break is stopped at the source before a single downstream row is affected. (In the batch case, the rename arrives in a file and is caught one step later.)
+2. Had it slipped past the registry, the **dbt contract** on the affected model fails at build: `contract: {enforced: true}` turns the schema drift into a hard CI failure, not a silent absorption.
+3. **OpenLineage** events, emitted by the affected jobs, let **impact analysis** enumerate the fourteen downstream tables, three dashboards, and the copilot that depend on the field — the blast radius that took two hours to trace by hand is now a query.
+4. **Great Expectations** would have caught the *symptom* (a spike in nulls) at the next run had the structural guards failed — defence in depth.
+5. The **active-metadata layer** (Chapter 11) routes the blocked-deployment alert to Maya with the impact report attached, and the **catalogue** (DataHub) refreshes from the corrected spec so discovery stays true.
+
+Five components, one sequence, and the 7 a.m. zeros never happen — the change is caught at step 1 or 2, and even a total failure of the structural guards is backstopped at step 4 and surfaced at step 5. That is what "assembled" means: not five tools installed, but five guarantees firing in order, each catching what the last might miss.
 
 ## What Meridian now has
 

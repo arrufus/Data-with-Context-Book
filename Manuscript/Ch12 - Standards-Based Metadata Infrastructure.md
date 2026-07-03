@@ -56,6 +56,38 @@ SELECT ?upstream ?job WHERE {
 
 The `+` is doing heroic work there: it traverses the lineage to *arbitrary depth*, which is exactly the query that was impossible when lineage died at each tool boundary.
 
+### The record, and the API
+
+SHACL validates a data model the chapter has so far only named, so here is what that model actually looks like — `client_holdings` and one job run, as DCAT and PROV-O triples:
+
+```turtle
+# The dataset, described with DCAT
+:client_holdings a dcat:Dataset ;
+    dcterms:title "Client Holdings" ;
+    dcat:contactPoint :maya_osei ;          # SHACL requires this to exist
+    dcterms:accrualPeriodicity :PT4H ;
+    :classification "confidential" .
+
+# A job run that produced a snapshot, described with PROV-O
+:run_build_holdings_20260630 a prov:Activity ;
+    prov:used :custodian_feed_a ;
+    prov:used :mdm_dim_client ;
+    prov:generated :client_holdings_snapshot_5842190347155829 ;
+    prov:startedAtTime "2026-06-30T04:00:00Z"^^xsd:dateTime ;
+    prov:wasAssociatedWith :airflow_build_client_holding .
+```
+
+This is the thing SHACL shapes constrain and the thing the graph stores — precise, W3C-standard, and reason-over-able. On top of it sits a small **API surface** that agents and CI consume, four endpoints doing the four jobs:
+
+```
+POST /metadata/assets           # register a dataset (owner, schema, SLA)
+POST /api/v1/lineage            # emit an OpenLineage event
+GET  /api/lineage/impact?dataset=…&depth=5   # blast radius before a change
+GET  /api/datasets/{urn}/trust-score          # the Ch 11 score, served
+```
+
+The impact endpoint returns the downstream jobs, datasets, dashboards, and owners to notify; the trust-score endpoint is what the active layer and the agent-context API of Chapter 11 call. The graph is not a passive store you browse — it is infrastructure that pipelines, CI, and agents *query*, which is exactly the "cataloguing → infrastructure" shift the chapter closes on.
+
 ## The capabilities this unlocks
 
 With capture, semantics, validation, and graph storage in place, a set of operational capabilities falls out — and each one is a direct answer to a fragmentation pain from the top of the chapter.
@@ -77,6 +109,41 @@ Most of this architecture is assembly, but two choices are load-bearing enough t
 **Bitemporal versioning.** The platform stores two timelines for every fact: *valid time* (when was this true in the real world?) and *transaction time* (when did we record it?). This sounds academic until an auditor asks the question that ends careers: *"Who owned this dataset when the incident occurred last quarter, and what did its quality look like on the day the model trained?"* A system that stores only the current state cannot answer; it knows who owns the dataset *now*. A bitemporal store reconstructs the past as it was understood at the time — the owner of record on that Tuesday in March, the quality score as it then stood. Part V will show this exact question deciding whether a model survives its audit; the bitemporal store is what lets the answer be "here it is" rather than "I'll come back to you."
 
 **Canonical identity.** Different tools label the same dataset differently — the custodian's `positions`, the lakehouse's `fact_position`, the BI tool's `Positions (Prod)`. Left alone, this ID fragmentation silently shreds metadata reliability: the graph thinks one dataset is three, and lineage never connects. The platform enforces a canonical URN format at the API boundary — `urn:dataset:wealth:client_holding` — rejects non-canonical IDs, and keeps a crosswalk for legacy identifiers. Unglamorous, and the difference between a graph that connects and a graph that lies.
+
+### Bitemporality, shown
+
+The bitemporal idea is abstract until you see the two timelines on one fact. Here is an ownership change on `client_holdings`, recorded so the past can be reconstructed as it was *understood at the time*:
+
+```turtle
+:ownership_v1 rdf:subject :client_holdings ; rdf:predicate :hasOwner ;
+    rdf:object "tom@meridian.example" ;
+    :validFrom "2025-01-01" ; :validTo "2026-04-01" ;      # true in the world
+    :transactionTime "2025-01-01T09:00:00Z" .              # when we recorded it
+:ownership_v2 rdf:subject :client_holdings ; rdf:predicate :hasOwner ;
+    rdf:object "maya.osei@meridian.example" ;
+    :validFrom "2026-04-01" ; :validTo :null_high ;
+    :transactionTime "2026-04-01T11:00:00Z" .
+```
+
+And the query that answers the career-ending audit question — *who owned this dataset when the incident occurred last March?*:
+
+```sparql
+SELECT ?owner WHERE {
+  ?s rdf:subject :client_holdings ; rdf:predicate :hasOwner ; rdf:object ?owner ;
+     :validFrom ?from ; :validTo ?to .
+  FILTER(?from <= "2026-03-15" && ?to > "2026-03-15")
+}
+```
+
+A single-state store answers "Maya" — today's owner — which is wrong for a March incident. The bitemporal store answers "Tom," correctly, because it kept both timelines. This is not academic: Part V shows this exact reconstruction deciding whether a model survives its audit, and this query is why the answer can be "here it is" rather than "I'll come back to you."
+
+## Sizing, scaling, and the unglamorous 20%
+
+Two practical notes keep the architecture from being a whiteboard fantasy. On **sizing**: a dataset generates on the order of tens to low-hundreds of triples for its description plus a steady stream of lineage triples per run, so at Meridian scale the graph is millions to low-billions of triples — comfortably within a triple store (Jena/Fuseki, GraphDB) or a managed option (Neptune), with the property-graph projection of the earlier trade-offs section for interactive UI queries. Event volumes are dominated by lineage, so the bus, not the store, is usually the first thing to size.
+
+On the **integration inventory** — the unglamorous 20% the standards do not cover — Meridian had to build adapters the open standards assume away: a **mainframe extract** that translates COBOL copybook definitions into DCAT, and a **BI-tool scraper** for the dashboard that would not emit lineage. Neither is glamorous and both were essential, because a lineage graph that dies at the mainframe or the BI tool has a hole exactly where an auditor will look. Budget for these adapters explicitly; they are where the "standards-based" architecture meets the estate that predates the standards.
+
+Finally, on **build sequence**: stand this up in the same phased way as everything else — **capture first** (get OpenLineage flowing from the top few pipelines into the graph), **graph second** (normalise to DCAT/PROV and make lineage queryable), **SHACL third** (add validation once there is enough in the graph to validate). Ninety days, one high-pain domain, one incident-resolution time cut from days to minutes as the proof. The integrator is not a two-year platform programme; it is the same prove-value-early discipline pointed at metadata infrastructure.
 
 ## Honest trade-offs
 

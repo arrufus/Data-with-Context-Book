@@ -44,6 +44,43 @@ The problem this era is trying to solve is **fragmentation and trust** — the a
 
 For most of this history, that was survivable, because of one thing: the consumer of the data was a human being. A human analyst who saw a strange revenue figure would investigate. A human who encountered a column called `cust_seg_3` would ask someone, or remember, or work it out. Humans carry context in their heads and supply it on demand; they bridge the gap between data and meaning instinctively, every day, without anyone noticing that a gap is being bridged at all. The whole edifice rested, silently, on human judgement filling in what the data could not say for itself.
 
+## The eras still in the room
+
+It is tempting to read that history as a sequence of replacements — the warehouse gave way to Hadoop, Hadoop to the cloud, the cloud to the lakehouse — but that is not how it played out in any real organisation, and certainly not at a firm like Meridian, the wealth manager whose story runs through this book. Nothing was ever fully replaced. The eras *accumulated*, each new layer added on top of the last while the last kept running, so that the platform you actually inherit is not the latest architecture but a geological cross-section of all of them at once. This makes the history practical rather than nostalgic: read as sediment, it becomes an assessment lens you can point at your own estate.
+
+| Era | Constraint it solved | Problem it handed forward | Artefacts you probably still run |
+|-----|---------------------|---------------------------|----------------------------------|
+| Relational / warehouse (1970s–90s) | Integration, consistency, single source of truth | Meaning modelled in a *separate layer* from the data | The mainframe, a Netezza or Teradata appliance, the enterprise warehouse, Kimball star schemas |
+| Big data (2000s) | Scale, variety, unstructured volume | Schema split into a *separate metastore*; drift made architectural | A Hadoop cluster in run-off, HDFS archives, a Hive Metastore, early NoSQL stores |
+| Cloud / real-time (2010s) | Elasticity, speed, the named data-engineer role | Meaning *scattered across a dozen best-of-breed tools* | Snowflake/BigQuery, Kafka, Airflow, dbt, Fivetran, a data catalogue |
+| Lakehouse / modern (2020s) | Fragmentation, cost, ML integration | The accumulated context debt now coming due | A half-migrated Delta/Iceberg lakehouse, a feature store, an LLM pilot |
+
+Meridian runs something from every row. A settlement mainframe nobody wants to touch. A decade-old warehouse of curated marts. An Iceberg lakehouse that half the domains have moved to and half have not. And, newest, two AI systems reaching across all of it. When we say the old model breaks, we do not mean an old *system* fails; we mean the *assumption* common to every layer — that context can live somewhere other than the data — finally stops being survivable. The assessment exercise this table invites is the one to do before any AI programme: for each era still running in your estate, ask where that layer keeps the *meaning* of its data, and how far that store has drifted from the data itself. The answer, era by era, is the shape of your context debt.
+
+## A worked genealogy: one metric, four fractures
+
+The abstraction "meaning gets separated from data" is easier to believe when you follow a single number through the eras and watch it fracture. Take the most ordinary metric a business has: the count of *active customers*. At Meridian, read *active clients*.
+
+In the **warehouse era**, "active" was defined once, by a modeller, encoded in an ETL transformation and a schema comment, and it held — because the same small team that defined it also consumed it. One definition, one place, one team. The gap between data and meaning existed (the definition lived in the ETL, not the operational system) but it was bridged by proximity.
+
+In the **big-data era**, the raw events landed in HDFS and the definition of "active" moved into a Hive query, or a Pig script, or a Spark job — one of several, written by different people for different purposes. The events knew nothing of "active"; the meaning lived in whichever job you happened to run. Two teams computing "active" from the same files now got two different numbers, and nothing in the files could adjudicate. **First fracture:** the definition detached from the data and multiplied.
+
+In the **cloud / modern-stack era**, "active client" became a dbt model — governed, versioned, tested, which is genuinely better — but *also* a Looker measure, *also* a filter baked into three dashboards, *also* a WHERE clause in a marketing export, *also* a sentence in a glossary that no longer matched any of them. Each tool held a fragment of the meaning, and the fragments diverged at the seams *between* tools: the seam where ingest hands to transform, where transform hands to BI, where BI hands to reverse-ETL. **Second and third fractures:** the meaning spread across the modular stack and drifted at every handoff.
+
+By the **lakehouse era**, the divergence is so normal that answering "how many active clients did we have last quarter?" honestly requires a reconciliation project — which is exactly the scene Chapter 2 opens with. And when, latterly, an AI copilot is pointed at this estate and asked the same question, it does not reconcile. It picks one fragment — whichever table or measure it can reach — and answers with total confidence, and the answer is one of the several wrong ones. This is the Okonkwo pattern the book returns to in Chapter 5, in miniature: not dirty data, but *fractured meaning*, consumed by something that cannot tell the fractures apart. The genealogy of one metric is the genealogy of the whole problem.
+
+## What didn't happen: three attempts to keep meaning attached
+
+A fair objection at this point is: *surely someone tried to fix this before?* They did. The industry made at least three serious attempts to keep meaning attached to data, and understanding why each stalled pre-empts the reasonable worry that this book is proposing something already tried and failed.
+
+**Master Data Management (MDM)** tried to create a single golden record for core entities — customer, product, instrument — with survivorship rules reconciling conflicting sources. It was, and is, valuable, and Meridian runs it for client identity. But MDM governs a narrow set of *entities*, not the meaning of every metric, feature, and field across the estate; it is a hub the rest of the platform must choose to consult, not a property that travels with the data. It reduced fracture for a few master entities and left the long tail untouched.
+
+**Enterprise Information Integration (EII)** and its data-virtualisation successors tried to present many sources through one virtual layer, so meaning could be defined once at the federation point. But the semantics still lived in the virtualisation server — one more separate system, drifting from the sources beneath it — and the approach struggled with scale and performance. It moved the separate store of meaning; it did not abolish it.
+
+**The semantic web (RDF, OWL, linked data), circa the 2000s** had exactly the right instinct — bind machine-readable meaning to data through shared ontologies — and largely failed to cross into the enterprise mainstream, defeated by tooling immaturity, the cost of authoring ontologies by hand, and the absence of a consuming workload urgent enough to justify the effort. That last point is the one that matters, because it has now changed. The semantic web lacked a consumer that *demanded* bound meaning. AI is that consumer. The technology the semantic web was early for is, as Part IV shows, exactly what a context data product now assembles — but pulled by a workload that finally makes the authoring effort pay.
+
+The pattern across all three is instructive and hopeful. Each tried to keep meaning attached, each put the meaning in *a system of its own*, and each therefore inherited the drift it meant to cure — and none had a consumer unforgiving enough to force the discipline through. This book's wager is that binding meaning *to the data* rather than to another system, and doing it now that an unforgiving consumer has arrived to demand it, is what makes the fourth attempt different.
+
 ## The inflection: a consumer that cannot supply its own context
 
 We are now in the middle of an AI revolution, and the cliché of the moment is that there is no AI without data engineering. That is true, but it understates the case in a way that matters. The deeper truth is that AI is **the first major consumer of enterprise data that cannot supply its own context.**
@@ -61,6 +98,14 @@ The instinct, faced with this, is to reach for a technology: a better lake, a be
 So Part I proceeds by taking apart that mental model in three moves. Chapter 2 examines the most consequential of the inherited assumptions: the idea, installed by the data lake, that you should hoard data now and find its meaning later. Chapter 3 traces the specific mechanism by which data and metadata came to live apart, and why every generation re-committed the same separation. And Chapter 4 confronts the failure mode directly — what actually happens when AI meets data that cannot explain itself — and sets out the map that the rest of the book follows to fix it.
 
 The history is not the enemy. The data lake was the right architecture for 2015, the warehouse the right one for 1995. The enemy is the assumption they all shared and never named: that context is something you can keep somewhere else and attach when you need it. For a human consumer, that assumption mostly held. For the consumer that has now arrived, it does not.
+
+## Further reading
+
+- E. F. Codd, *A Relational Model of Data for Large Shared Data Banks* (1970) — the paper that started the structured era.
+- W. H. Inmon, *Building the Data Warehouse*; R. Kimball & M. Ross, *The Data Warehouse Toolkit* — the two foundational (and rival) warehouse philosophies.
+- J. Dean & S. Ghemawat, *MapReduce: Simplified Data Processing on Large Clusters* (2004), and S. Ghemawat et al., *The Google File System* (2003) — the papers behind Hadoop.
+- On the modern-stack "crisis of integration," the RudderStack and Airbyte histories of data engineering are useful practitioner surveys.
+- On the semantic web's original ambition, T. Berners-Lee, J. Hendler & O. Lassila, *The Semantic Web* (Scientific American, 2001).
 
 > **Chapter summary.** Data engineering's one enduring job is turning raw data into useful information, and each era — relational/warehouse, Hadoop, cloud/real-time, lakehouse — solved its predecessor's central problem (consistency, scale, speed, fragmentation) while handing forward a new one. The constant, unsolved thread is that data's meaning kept getting separated from the data: modelled in a separate layer, schema in a separate metastore, semantics scattered across the modern stack. Human analysts silently bridged that gap with judgement. AI is the first consumer that cannot — it reads at machine speed with no memory and no instinct — which turns a chronic problem into the binding constraint. The failure is a mental model, not a technology, and the rest of Part I takes it apart.
 

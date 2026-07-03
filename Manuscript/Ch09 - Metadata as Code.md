@@ -71,6 +71,42 @@ spec:
 
 This is not documentation that describes the data product. It is the specification the data product is *deployed from and validated against*. Change the file, open a pull request, and CI runs the tests, checks the schema against downstream consumers, and blocks the merge if something would break. The metadata has teeth because it is code, and code has a CI pipeline standing behind it.
 
+## The repository, and a change in flight
+
+"Metadata as code" is only real if there is a *repository* it lives in, so here is the shape of Meridian's — the tree that turns the abstraction into somewhere an engineer commits on Monday (and the seed of Appendix B):
+
+```
+meridian-data-platform/
+├── contracts/            # data contracts (ODCS), one per product
+│   └── wealth/fact_client_holding.yaml
+├── table-specs/          # capsule/table definitions -> DDL
+│   └── wealth/fact_client_holding.yaml
+├── tests/                # quality suites (dbt / Great Expectations)
+│   └── fact_client_holding/
+├── policies/             # policy-as-code: classification, masking, access
+│   └── pii.yaml
+├── glossary/             # business definitions, division rules
+│   └── wealth/emerging_markets.yaml
+├── pipelines/            # transformation code (dbt models, jobs)
+├── CODEOWNERS            # who must review changes to each path
+└── .github/workflows/    # the CI that reconciles all of it
+```
+
+The layout encodes the discipline: the contract, the schema, the tests, the policy, and the glossary definition for a product all live in the same repository and move together, so a change to one is visible alongside the others. `CODEOWNERS` is quietly load-bearing — it is what pulls the right reviewer into a change automatically.
+
+Now watch the change that caused the Okonkwo error travel through this repository *as a pull request* instead of as a silent production edit. An engineer proposes redefining `em_exposure_pct` to be division-aware. They edit three files: the glossary definition (`glossary/wealth/emerging_markets.yaml`), the table spec, and the contract. Opening the PR fires the CI, and `CODEOWNERS` — because the change touches `glossary/wealth/` and `contracts/wealth/` — automatically requests review from Maya (the product owner) and the reviewer who understands both divisions. The CI classifies the change as **major** (a semantic redefinition), so it demands the 90-day consumer-notice check; it runs impact analysis and lists the copilot and three reports as affected; it runs the quality suite. The reviewer who understands retail-versus-institutional sees the diff *before* it reaches production — the exact human check that was missing when the change slipped through as an enrichment-job edit. On merge, the contract version bumps, the notice fires to the registered consumers, and the change deploys. The whole Okonkwo failure, replayed, is caught at the pull request. That is the chapter's central promise, shown once, concretely.
+
+### The CI stages
+
+The pipeline that stands behind the PR runs a fixed sequence of stages, and it is worth naming them because each is a guarantee:
+
+```
+lint → schema-validate → contract-compatibility → quality-tests →
+impact-analysis → (on main) deploy + notify-consumers
+```
+
+Lint rejects malformed specs; schema-validate checks the spec against the capsule/ODCS schema; contract-compatibility computes the semver class and blocks a breaking change lacking sign-off and notice; quality-tests gate on the bound suite; impact-analysis enumerates downstream consumers from the lineage graph; and only from `main` does the change apply and the consumer notification fire. Every stage is a place a bad change stops, and the only path to production runs through all of them.
+
 ## The four principles
 
 Effective Metadata as Code rests on four principles. They are worth stating plainly because every chapter in Part III is an elaboration of one or more of them.
@@ -96,6 +132,20 @@ Teams have managed metadata by hand for years; the reasonable question is why th
 **Data teams have absorbed DevOps culture.** dbt generates machine-readable artefacts describing transformations and tests; Airflow and Prefect expose programmatic interfaces; Great Expectations makes quality testable; Terraform manages resources declaratively. The tools and the muscle memory for treating data work like software engineering are already in the building. Metadata as Code is the natural extension.
 
 **And the cost of manual governance has become quantifiable.** Data-downtime incidents, teams losing a third of their week hunting and cleaning datasets, audit preparation measured in months — these are now line items, and the ROI case for automation has become hard to argue against. The 7 a.m. zeros had a cost: advisers' time, a compliance scare, two hours of senior engineers' morning. Multiply by a year of such incidents and the business case for automation writes itself.
+
+## Reconciliation: what GitOps does when reality drifts
+
+The Infrastructure-as-Code analogy has one more part the principles imply but do not spell out: *reconciliation*. Terraform does not only apply changes; it continuously compares the declared state in Git against the live infrastructure and flags — or corrects — drift. Metadata as Code needs the same loop, because a live table *can* still be changed out of band (a console edit, a hotfix, a permission granted directly), and when it is, the Git definition and reality diverge exactly as they did in the bad old world.
+
+So Meridian runs a scheduled reconciliation: a job compares each live table's actual schema, properties, and policy tags against the capsule spec in Git, and on any discrepancy it does one of two things depending on blast radius. For low-risk drift (a missing description, a stale property), it *auto-reverts* to the declared state — the Git definition wins, silently. For high-risk drift (a schema change, a classification downgrade, a policy removed), it *does not* auto-revert; it raises an alert and opens a ticket to the owner, because an unexplained schema change might be a legitimate emergency fix that needs to be reconciled *into* Git rather than stamped out. The rule mirrors Chapter 13's source-of-truth principle: the Git spec is authoritative, and reconciliation is how that authority is enforced continuously rather than assumed. Drift becomes a detected, routed event, not a silent divergence discovered in an incident.
+
+## Adopting this on a brownfield estate
+
+Nobody starts clean, so the realistic question is sequencing. You do not codify the whole estate at once; you codify the metadata that hurts most, first. Meridian's order: **schema and ownership first** (the cheapest to capture and the most immediately useful — every table gets a spec with an owner, gated in CI), **then quality** (the bound test suites for tier-1 products), **then policy** (classification and masking as code), **then semantics and lineage** (the glossary definitions and OpenLineage wiring). Scaffolding makes compliance easier than the old way — a `new-capsule.sh` generator produces the spec, the contract skeleton, and the test stub, so the governed path is the *fast* path, not the slow one. The sequencing principle is the same as everywhere in the book: highest pain, lowest effort, first — and make the right thing the easy thing, or the shortcut wins.
+
+## The honest costs
+
+Metadata as Code is not free, and pretending otherwise is how it gets abandoned at the first friction. Three costs are real. **Review latency:** routing metadata changes through pull requests adds hours or a day to changes that used to be instant console edits — worth it for the traceability, but a genuine change to cadence that teams must be prepared for. **YAML fatigue:** engineers who wanted to write transformations now also write specs, and without good scaffolding and templates the ceremony breeds resentment; the mitigation is generators and sane defaults so the spec is mostly filled in. **The governance-team skill shift:** stewards who curated a catalogue by hand now review pull requests and write policy-as-code — a real reskilling from documentation to engineering, which some will welcome and some will resist (a thread Chapter 20 picks up as Tom's and Helena's arcs). None of these is a reason not to do it; each is a reason to do it deliberately, with tooling and change management, rather than by decree.
 
 ## What this changes for Meridian
 

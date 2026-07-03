@@ -33,6 +33,52 @@ A training dataset is not a table you query once and forget. It is a critical in
 
 The discipline that makes all of this real is one rule: **training-data capsules are immutable snapshots tied to model versions.** When you train model v2.3, you record that it was trained on `client_suitability_training` snapshot `2026-03-15T00:00:00Z`. That snapshot is frozen. If anyone later asks what data produced that model, you retrieve exactly that version — not whatever the table looks like today. Delta, Iceberg, and Hudi all support this snapshotting natively; the capsule discipline simply *requires that you use it*, every training run recording the specific snapshot it consumed, that reference becoming a permanent part of the model's record.
 
+### The training-data capsule, written out
+
+The Maya story turns on a training-data capsule, so the reader should see one. Here is `client_suitability_training` — the frozen snapshot the suitability model trained on — expressed as a capsule. Note what it carries that an ordinary table does not: a pinned snapshot, a per-feature lawful-basis manifest, a label-provenance block, and distribution baselines the drift monitor will later compare against.
+
+```yaml
+data_product: client_suitability_training
+version: 2.3.0
+kind: training_dataset
+owners: { product_owner: maya.osei@meridian.example }
+
+snapshot:
+  source: wealth.fact_client_holding
+  pinned_at: "2026-03-15T00:00:00Z"     # immutable; the model's permanent record
+  iceberg_snapshot_id: 5842190347155829
+
+features:
+  - name: em_exposure_pct
+    semantic_ref: "glossary://wealth/emerging_markets"
+    division_aware: true                 # normalised at feature build
+    lawful_basis: "legitimate_interest:suitability_monitoring"
+    permits_automated_decision: true
+  - name: client_tenure_months
+    definition: "months since first funded trade (NOT account open)"
+    lawful_basis: "contract"
+    permits_automated_decision: true
+  - name: postcode_district
+    lawful_basis: "consent:profiling"
+    permits_automated_decision: false    # excluded from the eligibility path
+    note: "proxy-discrimination risk; monitored"
+
+labels:
+  target: suitable_flag
+  provenance: "adviser adjudication, 2024-2025; inter-rater agreement 0.88"
+  known_bias: "under-represents execution-only clients"
+
+quality_baselines:                       # the drift monitor's reference
+  em_exposure_pct: { mean: 12.4, p95: 41.0, null_rate: 0.001 }
+  client_tenure_months: { mean: 63, null_rate: 0.0 }
+
+policy:
+  retention: P7Y
+  approved_uses: [suitability_model_training, eligibility_model_training]
+```
+
+Everything the eleven-minute meeting needed is in this file. "Which features were sourced under a basis that permits automated decisions?" is now a filter over `features[].permits_automated_decision`, returning an answer in the room. The snapshot is pinned and immutable, so "what data trained model v2.3?" resolves to an exact, retrievable state, not whatever the table looks like today. And the `quality_baselines` block is the reference the production drift monitor compares live inference against — which is where this chapter goes next.
+
 ## Feature stores through the capsule lens
 
 Feature stores — Feast, Tecton, Databricks Feature Store, Vertex AI Feature Store — exist precisely because teams recognised that feature engineering was a mess. They centralise feature definitions, serve features consistently for training and inference, and add some discoverability. In effect they are *proto-capsules*: they already bundle data with metadata — feature schemas, descriptions, entity definitions, freshness. But most implementations stop short of the full model, and the parts they skip are the parts that bite.
@@ -44,6 +90,29 @@ Feature stores — Feast, Tecton, Databricks Feature Store, Vertex AI Feature St
 **Quality expectations beyond schema are usually absent.** A feature can have the right type and the wrong distribution. If `trades_per_quarter` suddenly shows 80% zeros when it historically showed 20%, that is a data-quality event that should block training; most feature stores will not catch it.
 
 Bringing capsule discipline to a feature store means treating each feature group as a full capsule: defining quality tests that *gate feature availability* so a degraded feature is quarantined rather than silently served; attaching policy tags that *control consumption* so `income_band` requires additional approval before use in a credit decision; and tracing lineage from raw data through every transformation so a source change immediately identifies the affected features and models. This also resolves the online/offline consistency problem that haunts feature stores: the capsule definition becomes the contract both serving paths must honour. If the batch (offline) and real-time (online) paths diverge in schema, semantics, or quality, you do not have a reliable feature — you have two different things wearing the same name.
+
+### A feature group as a capsule, concretely
+
+Turning a feature group into a full capsule sounds abstract until you see it in feature-store syntax. Here is Meridian's `client_activity` group defined the way a Feast-style store would take it, extended with the three things most feature-store definitions omit — policy tags, gating tests, and an explicit online/offline contract:
+
+```python
+client_activity = FeatureView(
+    name="client_activity",
+    entities=[client],
+    ttl=timedelta(days=90),
+    schema=[
+        Field(name="trades_per_quarter", dtype=Int64,
+              tags={"pii": "false", "gate_test": "distribution_within_3sigma"}),
+        Field(name="income_band", dtype=String,
+              tags={"pii": "sensitive", "approval_required": "credit_use",
+                    "gate_test": "accepted_values"}),
+    ],
+    online=True, offline=True,          # same definition serves both paths
+    tags={"owner": "maya.osei", "contract": "contracts/client_activity.yaml"},
+)
+```
+
+The three additions are the whole point. The **policy tag** on `income_band` (`approval_required: credit_use`) is the control that stops a credit-eligibility model from silently consuming a sensitive feature without sign-off — policy travelling with the feature, not filed elsewhere. The **gate test** tags mean a feature whose distribution drifts is *quarantined from serving*, not served degraded. And declaring **`online=True, offline=True` against one definition** is the capsule enforcing online/offline consistency: both serving paths honour the same schema, semantics, and quality, so training and inference cannot silently diverge into two things wearing one name. A feature store gives you the container; capsule discipline fills in the policy, the gates, and the contract that make the container trustworthy.
 
 ## Model governance and the data side of MLOps
 
@@ -57,6 +126,40 @@ The capsule completes the picture: the model card documents the model; the capsu
 
 **Defensible retraining decisions.** When an upstream capsule changes — new schema, new source, new quality rule — every model that consumes it can be flagged for review automatically. You discover the problem when the *data* changes, not three months later when the model's predictions have quietly degraded on a feature that no longer means what it meant at training time.
 
+### The registration record, and the answer to the committee
+
+The connection between model and training capsule should be an artefact, not a principle, so here is what a model-registry entry looks like when it carries the capsule reference — an MLflow-style record for the suitability model:
+
+```json
+{
+  "model": "client_suitability", "version": "2.3",
+  "training_data": {
+    "capsule": "client_suitability_training",
+    "capsule_version": "2.3.0",
+    "iceberg_snapshot_id": 5842190347155829,
+    "quality_suite": "v2.1 (passed)",
+    "lawful_basis_manifest": "manifests/suitability_v2.3_lawful_basis.yaml"
+  },
+  "approved_uses": ["adviser_copilot_suitability"],
+  "prohibited_uses": ["unsupervised_client_facing_advice"]
+}
+```
+
+That `training_data` block is the difference between "I'll come back to you" and an answer. When the committee asks what data trained the model, the answer is a dereference of a pinned capsule version, not a forensic reconstruction. And the `lawful_basis_manifest` it points to is the artefact the whole Maya story turned on — a per-feature record of the lawful basis, of which a representative excerpt reads:
+
+| Feature | Lawful basis | Permits automated decision? |
+|---------|--------------|:---:|
+| `em_exposure_pct` | legitimate interest (suitability monitoring) | ✓ |
+| `client_tenure_months` | contract | ✓ |
+| `risk_score` | contract | ✓ |
+| `postcode_district` | consent (profiling) | ✗ — excluded from eligibility path |
+| `income_band` | consent (profiling) | ✗ — credit use requires sign-off |
+| `held_products` | contract | ✓ |
+| `interaction_recency` | legitimate interest | ✓ |
+| `complaint_flag` | legitimate interest | ✗ — prohibited in automated adverse decisions |
+
+Eight illustrative rows stand in for the seventy-three the committee asked about. The point is that the answer is a *table you can query and filter*, versioned with the model and the training capsule — so "which features permit automated decision-making?" is a `WHERE` clause, and the model survives its review because its data can testify.
+
 ## Lineage for streaming and ML pipelines
 
 Lineage is easy when data sits in tables and jobs run on schedules. It is hard when data flows continuously and models train on snapshots of a moving target — which is exactly Meridian's intraday position pipeline. Consider the chain behind a single suitability feature:
@@ -66,6 +169,39 @@ Raw position events land in a Kafka topic. A CDC job captures custodian database
 Every step has its own tooling and its own lineage mechanism, and the value of capsule-anchored lineage is *connecting them into one chain*: raw topic → CDC stream → feature table → training snapshot → model version. When a prediction is challenged or performance degrades, you trace backward through the whole chain. This is not just operational convenience; it is a compliance requirement for high-stakes ML. The EU AI Act demands transparency about training data for high-risk systems; financial regulators want audit trails for decisions that affect clients. With capsule-anchored lineage, "which models were trained on data derived from this Kafka topic?" is a graph query. Without it, you are back to archaeology — which is to say, back to "I'll come back to you on that."
 
 Streaming reframes what the capsule *is*, slightly. A Hudi capsule fed by a stream is not a static table but a sequence of validated state transitions, each commit a checked step. The capsule's quality gate runs at the commit boundary (the pre-commit validator from Chapter 6), so the stream cannot advance into an invalid state. Data in motion is still data with context bound to it; the binding just happens per-commit rather than per-batch.
+
+### Streaming capsules: compatibility modes and the topic as a unit
+
+Data in motion needs the capsule discipline as much as data at rest, and the schema registry is where it lives. The registry's *compatibility mode* is the streaming equivalent of the semver rules from Chapter 5, and choosing it is a governance decision:
+
+- **Backward** compatible: new schema can read old data (you may add optional fields, remove fields). Consumers upgrade first. The common default.
+- **Forward** compatible: old schema can read new data (you may add fields, not remove). Producers upgrade first.
+- **Full**: both — the safe, strict choice for a capsule that feeds a regulated model, because neither producers nor consumers can be broken by a change.
+
+Meridian's intraday position stream is registered **full**-compatible, so a producer cannot remove or retype a field the suitability features depend on without the registry rejecting the change at publish — the streaming version of step 3 in the CI pipeline. Expressed as a capsule, the Kafka topic carries the same seven components: the AsyncAPI/Avro schema (structural), field docs and the `division` semantics (semantic), the registry compatibility mode and a validator (quality), classification and retention (policy), the topic and offset as lineage anchors, and an SLA on end-to-end latency (contract). A stream is not exempt from the capsule; its binding just happens per-event through the registry rather than per-batch through CI.
+
+Two streaming-specific wrinkles the capsule has to absorb. **Exactly-once** semantics matter because a quality gate that double-counts or drops an event produces a false anomaly; Meridian's gates run on the deduplicated, committed stream (the Hudi commit from Chapter 6), not the raw topic. And **late-arriving data** means a quality baseline computed on a window may shift as stragglers land, so distribution gates use a grace period before they fire, distinguishing "genuinely anomalous" from "not all here yet."
+
+### The drift monitor, as a job
+
+The `quality_baselines` block in the training capsule exists to be *used*, and here is the job that uses it — the production drift monitor, in outline:
+
+```python
+def check_drift(live_window, training_capsule):
+    base = training_capsule["quality_baselines"]
+    alerts = []
+    for feature, ref in base.items():
+        live = summarise(live_window, feature)     # mean, p95, null_rate
+        if abs(live.mean - ref["mean"]) > 3 * ref.get("std", ref["mean"]*0.1):
+            alerts.append((feature, "mean drift", live.mean, ref["mean"]))
+        if live.null_rate > ref["null_rate"] * 5:
+            alerts.append((feature, "null-rate spike", live.null_rate))
+    if alerts:
+        route_to_owner(training_capsule["owners"]["product_owner"], alerts)
+    return alerts
+```
+
+The baseline is not a number someone remembered; it is the training capsule's own recorded distribution, so "has the world moved away from what the model learned?" is a comparison against a *pinned, versioned reference*, and the alert routes to the named owner rather than a shared inbox. When an upstream capsule bumps a major version, the same wiring flags every model whose training capsule referenced it — discovering the problem when the *data* changes, not three months later in the predictions.
 
 ## Doing this without strangling experimentation
 

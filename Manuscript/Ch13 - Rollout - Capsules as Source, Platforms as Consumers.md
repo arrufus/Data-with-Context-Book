@@ -24,6 +24,26 @@ Begin with a pain audit. Count the incidents caused by undocumented schema chang
 
 For Meridian the choice writes itself: `client_holdings` is high-value, has already failed visibly, and sits under suitability regulation. The deliverable of Phase 0 is a ranked list of pilot candidates with justification, documented pain points with estimated cost, and a map of where the governance platforms are used and where the metadata gaps are. That map is also the business case for everything that follows.
 
+### The business case, written out
+
+Phase 0's pain audit is not just prioritisation; it is the *funding artefact*, and it is worth showing the one-page cost model it produces, because "governance is worth it" loses to a spreadsheet unless it *is* a spreadsheet. Meridian's, for the wealth division, in round numbers:
+
+| Current annual cost of the status quo | Estimate |
+|---|---|
+| Reconciliation / discovery time (30 engineers × ⅓ week × cost) | ~£900k |
+| Data-quality incidents (≈40/yr × downtime + recovery) | ~£600k |
+| Audit / regulatory evidence prep (weeks of manual reconstruction) | ~£250k |
+| The paused-model counterfactual (one stalled AI initiative) | ~£500k+ |
+| **Total recurring drag** | **~£2.25m/yr** |
+
+| Cost of the discipline | Estimate |
+|---|---|
+| Roles (product owners, part-time stewards, platform effort) | ~£600k/yr |
+| Infrastructure (graph, active layer, CI) | ~£150k/yr |
+| **Total** | **~£750k/yr** |
+
+The shape, not the precision, is the argument: the recurring drag of the ungoverned estate dwarfs the cost of the discipline, and most of the drag is invisible because it is paid in a line no vendor invoices (the reconciliation tax of Chapter 2). Phase 0 turns that invisible cost into a number a sponsor can approve, and the leading indicators below turn it into a number that visibly falls. Chapter 21 develops the full three-year ROI model; Phase 0's job is to produce enough of it to fund Phase 1.
+
 ## The four phases of adoption
 
 From the pilot, the rollout proceeds in four phases that map cleanly onto a per-asset maturity score — the same Level 0-to-4 ladder the whole book climbs, now applied one dataset at a time.
@@ -60,6 +80,36 @@ def detect_drift(capsule: dict, platform: dict) -> list:
             if capsule.get(k) != platform.get(k)]
 ```
 
+### Who does what: a rollout RACI
+
+Adoption stalls most often on unclear responsibility, so name it. Across the four phases, the roles divide like this:
+
+| Activity | Producer team | Platform | Governance | Domain owner |
+|----------|:---:|:---:|:---:|:---:|
+| Write capsule specs | **R** | C | C | **A** |
+| CI gates & reconciliation | C | **R/A** | C | I |
+| Quality suites | **R** | C | C | **A** |
+| Classification & policy | C | R | **A** | C |
+| Platform sync (capsule→consumer) | I | **R/A** | C | I |
+| Sign-off for AI use | I | I | C | **A** |
+
+(R = responsible, A = accountable, C = consulted, I = informed.) The pattern that matters: the **domain owner is accountable** for the product's specs, quality, and AI-use sign-off; the **platform is accountable** for the machinery (CI, reconciliation, sync); **governance is accountable** for policy. Blur these — as the failed rollouts in a moment do — and the work falls between stools.
+
+### The steward feedback loop, end to end
+
+The Phase-4 feedback loop is where the source-of-truth rule survives real organisational life, so trace it concretely. A steward, working in Collibra (where stewards work), adds a business-glossary link and a certification note to a product. An overnight job detects the enrichment and opens a **pull request against the capsule's glossary and contract files**, attributing it to the steward. Maya reviews and merges it; the capsule version bumps; the platform then **refreshes from the updated capsule**, so Collibra now shows the enrichment *because it flowed back to the source and forward again*, not because it was edited in place. Conflicts (steward and capsule disagree) resolve one way only: the PR makes the disagreement visible and a human decides, in Git, with history. The architecture is event-driven for speed and nightly-reconciled as a backstop. This is the mechanism that lets Helena's team keep working in the catalogue while the capsule stays authoritative — the answer to "but our stewards live in the platform."
+
+### A rollout calendar
+
+Adoption is a behaviour-change programme, so it has a calendar, not just a set of phases. Meridian's, quarter by quarter, with maturity-distribution targets:
+
+- **Q1 — Pilot.** `client_holdings` and 2–3 wealth products to Level 3. Target: pilot cohort at L3, MTTR baseline captured.
+- **Q2 — Domain 2–3.** Extend to the two domains the pilot's value summary justified. Target: 20% of tier-1 products at L2+.
+- **Q3 — Division.** Roll across the wealth division; scaffolding and standards now reusable. Target: 50% of tier-1 at L2+, legacy (L0–1) count falling.
+- **Q4 — Enterprise.** Second division begins; the context standard becomes default for new products. Target: all *new* products born at L1+, no L0 tier-1 products.
+
+The calendar is what turns "capsules are the source of truth" from a principle into a dated programme a steering committee can track — and the falling legacy count is the number that proves it is working.
+
 ## The anti-patterns that kill rollouts
 
 Enough rollouts have failed in known ways that the failure modes can be named in advance. Each is a temptation that feels reasonable in the moment and is corrosive over time.
@@ -81,6 +131,16 @@ Read the five together and they share one root: impatience with the discipline o
 Because the rollout is asset-by-asset, you can measure it asset-by-asset, and you should, because the measurement is what justifies the next phase's funding. Score each asset 0 to 4: **0** no metadata, **1** basic properties, **2** quality expectations enforced, **3** policy and lineage embedded and platform synced, **4** full capsule discipline. This is the maturity ladder of Chapter 4, instantiated per dataset. Track the distribution by domain, watch the legacy (Level 0–1) count fall quarter over quarter, and celebrate the milestones, because adoption is a behaviour-change programme as much as a technical one and behaviour change runs on visible progress.
 
 Pair the maturity score with leading and lagging indicators. *Leading*: capsule completeness rate, CI/CD gate pass rate, platform-to-capsule sync success rate. *Lagging*: incident MTTR, data-quality incident rate, compliance-audit prep time, analyst onboarding time. The leading indicators tell you the discipline is taking hold; the lagging ones tell the business it was worth it. When Meridian can show the wealth division's MTTR falling and audit prep compressing from weeks to days, the case for Phase 2 in the next division makes itself.
+
+## Change management, and two rollouts
+
+The technical rollout is the easy half; the change-management half is where programmes actually live or die, and it deserves more than a footnote. Three practices carry it. **Training and office hours** — regular, low-ceremony sessions where teams bring their real capsules and get help, so the discipline is learned by doing not by decree. **The capsule champion pattern** — one enthusiast per domain, seeded early, who becomes the local expert and the social proof that this is normal, not imposed. And **a plan for the team that refuses** — because there is always one, and the answer is neither to force nor to exempt them but to let the *value* of the adopting teams (faster delivery, fewer incidents, products other teams pull from) make the holdout's position untenable, while leadership holds the line that new products are born governed. Adoption follows demonstrated utility; it cannot be mandated ahead of it.
+
+Two short cases, generalised from patterns across the industry, show the difference between a rollout that scaled and one that stalled.
+
+**The stall (Phase 2, forever).** A firm stood up the CI gates, wrote specs for its pilot products, and got them to Level 1 — and then stopped. Quality suites (Phase 2) never got written for anything beyond the pilot, because the domain teams treated capsules as a platform-team deliverable, not their own. The RACI above was never established: the platform "owned" the capsules, which meant the domains did not, which meant the specs went stale and the catalogue drifted back to being the de facto truth. Eighteen months in, they had a governed pilot and an ungoverned everything-else, and the programme quietly lost its funding. The failure was ownership, not technology — the exact operating-model failure Chapter 20 anatomises.
+
+**The scale (past the pilot).** A second firm did one thing differently: it made domain product owners *accountable* (the RACI's A) from Phase 1, funded a part-time steward per domain, and required every *new* product to be born as a capsule. The pilot proved value; the value summary funded the next two domains; the scaffolding made the second domain faster than the first; and by the fourth quarter the discipline was self-propagating, because a new product was easier to build the governed way than the old way. The difference between the two was not tooling — they ran similar stacks. It was that the second treated product ownership as the work and the platform as the enabler, and the first treated the platform as the work and ownership as something to back-fill later. The platform always ships; the ownership almost never gets back-filled. That single distinction, more than any technology in Part III, decides whether the rollout takes.
 
 ## What "automate" has delivered, and what comes next
 

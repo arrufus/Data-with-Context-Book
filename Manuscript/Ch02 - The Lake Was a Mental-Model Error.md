@@ -36,6 +36,16 @@ Three tables contain "customer." Four definitions of "active" circulate across d
 
 This is not a hypothetical; it is the daily texture of most enterprise data teams, and the cost is not merely operational. It is reputational, and the reputational cost is the one that ends up constraining everything else. Business stakeholders do not care about ingestion throughput. They care about getting the right answer today. Every "let me check" and every "that depends which table you use" compounds, in the stakeholder's mind, into a single conclusion: *the data team is a cost centre that slows things down.* And once that conclusion sets, the projects that might reverse it — the governance work, the product work, the very investments that would fix the swamp — are the hardest projects in the building to fund, because they are being proposed by a team the business has quietly written off as overhead. The mental model does not just produce bad data. It produces a political position from which the bad data cannot be fixed.
 
+## Two failures, in texture
+
+The 85% figure is easy to quote and hard to feel, so it is worth slowing down on two composite failures — anonymised, but each assembled from patterns documented across the industry — because the *shape* of a lake failure is more instructive than the statistic.
+
+**The insurer's lake.** A large insurer spent thirty months and a substantial capital budget building a data lake to feed its catastrophe-modelling workflow. The infrastructure worked exactly as designed: ingestion scaled, storage was cheap, the architecture diagram was clean. Twelve months after the programme formally concluded, the catastrophe modellers — the intended users, the whole point of the exercise — still could not use it effectively. The data was there; the *meaning* was not. Nobody could tell a modeller which of several overlapping exposure tables was authoritative, what a given peril code meant across the acquired subsidiaries, or whether a field had been reconciled since the last migration. The lake did not fail technically. It failed to answer the one question its users needed answered, and the cost was not just the build — it was two years of modellers working around the platform, and a data function that had spent its credibility.
+
+**The bank's lakehouse migration.** A retail bank migrated from an ageing warehouse to a modern lakehouse: medallion architecture, Spark clusters, ACID transactions, time travel, the full modern stack. Six months on, the analysts were complaining about precisely the things they had complained about before the migration — tables missing or misnamed, queries timing out, nobody sure what a column meant or who owned the pipeline that produced it. The file format was now excellent. The organisational condition underneath it was unchanged, so the swamp had simply been re-hosted on better storage, at a higher compute bill. The tell was the Spark spend: tens of thousands a month to query cheap object storage, buying no improvement the analysts could feel.
+
+Put a rough cost line under each and the pattern sharpens. The insurer's thirty-month build plus a year of unusable output is a multi-million write-down measured in capital *and* in the harder-to-recover currency of trust. The bank's migration converted a storage line item into a larger compute line item and delivered no measurable change in analyst productivity or incident rate — a negative return dressed as modernisation. Neither failure was a failure of engineering. Both were failures of the mental model: an organisation that had not decided what its data *meant*, or who *owned* it, bought a better place to keep data it still could not use.
+
 ## Schema is not governance, and ACID is not meaning
 
 At this point the lakehouse generation enters, and it deserves a fair hearing, because it genuinely improved things. Delta Lake, Iceberg, and Hudi brought schema enforcement, ACID transactions, and time travel to the data lake — the technical advances Part II will lean on heavily. The vendor pitch is seductive and the demos are immaculate: one unified platform, decoupled storage and compute, built-in schema enforcement, governance solved.
@@ -77,6 +87,14 @@ Teams have been comfortable deferring this correction for years, and the questio
 
 **Platform economics.** Cloud platforms have made storage cheap and complexity expensive, which inverts the original calculation. The lake's whole premise was that storage was the scarce resource worth optimising. It no longer is. The scarce resource now is the human effort of finding and fixing issues across a sprawling, undocumented estate — and that effort now costs more than building governed products properly in the first place.
 
+## The economics, on the back of an envelope
+
+The claim that "storage is cheap and complexity is expensive" deserves a number, because it is the argument that actually moves a budget. Sketch the total cost of ownership of a lake-style estate the way a finance director would, and the shape becomes obvious even before the figures are precise.
+
+The storage line is genuinely small — object storage runs to cents per gigabyte per month, and for most enterprises the raw-storage bill is a rounding error against the data function's salary cost. The *compute* line is larger and lumpier: the clusters that query the cheap storage, the always-on streaming, the recomputation of poorly modelled transformations. But neither is the dominant term. The dominant term is **human time spent finding, reconciling, and second-guessing data** — and the industry benchmarks put it starkly: data professionals routinely report spending on the order of a third to 40% of their week on data-quality and discovery work rather than on building value. For a data team of thirty on a blended cost of, say, £90,000 each, a third of the week lost to reconciliation is roughly £900,000 a year — every year — evaporating into "let me check which table." Add the incident cost (a serious data-quality incident's downtime is measured in tens of thousands per event, and mature estates still see one issue per ten tables per year) and the audit-preparation cost (weeks of manual lineage reconstruction per regulatory ask), and the human-and-organisational term dwarfs both storage and compute combined.
+
+That is the inversion in one paragraph. The lake optimised the *cheapest* line on the bill — storage — and left untouched the *most expensive* one — the human cost of an estate whose meaning has to be reconstructed on every use. A data product moves spend the other way: a little more up-front effort to bind context and ownership, in exchange for collapsing the recurring reconciliation tax. We will make this ROI argument rigorously in Chapter 21, with Meridian's own numbers; for now the envelope is enough to establish that "governance is expensive" has the economics exactly backwards. *Ungoverned data* is the expensive option; you simply pay for it in a line the storage vendor never invoices.
+
 ## What "fixing it" actually looks like
 
 The encouraging part is that the correction does not require draining the lake or buying a new platform. Organisations that recover from a swamp almost never do so by migrating somewhere else; they do so by addressing the ownership and governance gaps the original migration left untouched. Three patterns recur.
@@ -88,6 +106,37 @@ The encouraging part is that the correction does not require draining the lake o
 **Treat metadata as infrastructure, declared before the data is written.** Every pipeline that writes data should register its schema, lineage, ownership, and description *first* — as the opening step, not an afterthought. Metadata is part of the pipeline's contract, not documentation that someone might add later. This is the seam where Part I hands off to the rest of the book: metadata that is declared, enforced, and bound to the data is the beginning of the capsule discipline, and it is the subject of the next chapter and much of Part III.
 
 And the way to begin all of this is deliberately small, because the lake-sized ambition is itself part of the disease. Pick one high-value domain. Name one owner. Write one contract. Prove the model against one real consumer with one real SLA. Then expand. Boards do not fund lakes; boards fund outcomes, and one delivered outcome is worth more than fifty petabytes of latent potential.
+
+## The first product, concretely
+
+"Pick one high-value domain, name one owner, write one contract" is easy to say and easy to nod past, so here is what the *first* artefact actually looks like — the thing Meridian produced before it wrote a line of pipeline code for its client-holdings domain. Not a platform, not a migration plan: a one-page **product charter** that turns a table people had got into the habit of querying into a product someone answers for.
+
+```
+PRODUCT CHARTER — client_holdings
+Owner:        Maya Osei (Client Data domain) — accountable, with budget
+Purpose:      Client portfolio holdings with suitability context, for
+              adviser-facing and internal analytical use
+Consumers:    Adviser copilot (retrieval); Suitability monitoring;
+              Client reporting; Regulatory returns (holdings aggregates)
+Grain:        one row per client per holding per valuation date
+SLA:          freshness < 4h; completeness > 99.9%; availability > 99.9%
+Key terms:    "EM exposure" is DIVISION-DEPENDENT (see semantics)
+Classification: confidential; retention 7y
+Change policy: breaking changes require 90-day notice to named consumers
+Status:       Draft → (target) Published
+```
+
+That is not a data product yet — there is no bound schema, no enforced quality, no lineage. It is the *charter* from which those things follow, and it does three things a lake never does. It names a person, not a team, who can be woken up if the product fails. It names the consumers, so a change has a known blast radius. And it states, in one line, the single most consequential piece of meaning — the division-dependent definition of EM exposure — that, left unstated, produced the suitability error the book opens Part II with. Everything from Chapter 5 onward is the machinery that makes this charter enforceable; the charter itself is a morning's work and the precondition for all of it.
+
+## Objections, answered honestly
+
+The data-product correction reliably meets three objections, and each deserves a straight answer rather than a slogan.
+
+*"We need raw data for data science — products will lock us out of it."* No. The bronze/raw layer does not disappear under a product model; Chapter 8 keeps it deliberately. Data scientists retain access to raw data for exploration. What changes is that the *outputs they promote to production* — the features a model trains on, the tables a copilot reads — become products with owners and contracts. Raw for discovery, products for dependence. The two coexist.
+
+*"Products will slow us down — all this ceremony for a table."* The ceremony is front-loaded and small (the charter above is a morning), and it *replaces* a recurring, unbudgeted tax: the reconciliation, the "which table do I trust," the 2 a.m. incident with no owner. Teams that adopt products report faster delivery, not slower, because the time saved on discovery and firefighting dwarfs the time spent writing a contract. Slowness is what you have *now*; you are just not counting it.
+
+*"We already have a catalogue — isn't that the same thing?"* No, and Chapter 3 is largely about why. A catalogue *describes* data that lives elsewhere and drifts from it; a product *is* the data with its context bound to it and guaranteed. A catalogue is a map; a product is territory you can stand on. Most organisations that "have a catalogue" have a map that has been wrong since shortly after it was drawn — which is precisely the mechanism the next chapter takes apart.
 
 ## The lever is the model
 

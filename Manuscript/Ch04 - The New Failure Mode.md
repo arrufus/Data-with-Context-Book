@@ -20,11 +20,43 @@ Most enterprise data was not built to withstand this, because it was built for a
 
 And the distinction is sharper than "AI needs cleaner data," because the feedback loops are different in kind. In traditional BI, a bad number surfaces in a dashboard and someone raises a ticket; the error is visible and contained. In an ML pipeline, a bad number trains the model to produce more bad numbers, and the error is invisible and compounding. The model does not flag the contradiction it was fed. It internalises it and serves it back, confidently, thousands of times an hour. That is what it means to say AI does not work around problems in the data — it learns from them. The slack is gone, and with it the margin that made decades of data drift survivable.
 
+## Three shapes of the failure
+
+"AI dies at the data layer" is a slogan until you can recognise the specific shapes it takes, because they look different in production and a team that has seen only one will be blindsided by the others. There are three archetypes, and every reader building with AI in 2026 will meet at least one.
+
+**The training-data contradiction — a model that learns a lie.** A model trains on data carrying an undocumented contradiction — two definitions of "active," a feature computed two ways, a label set with a systematic bias — and it does exactly what it is designed to do: it learns the pattern, contradiction included. Nothing errors. The model deploys, performs plausibly in aggregate, and quietly makes a fraction of its decisions on a fault line no one flagged. Meridian's version: a suitability model trained on holdings where EM exposure was computed under mixed divisional definitions learns a relationship between "EM exposure" and "suitable" that is wrong for half its population, and the error is invisible until a specific client — a retail account misread as institutional — surfaces it. The failure is *silent, aggregate-passing, and baked into the weights*, which is the worst place for an error to live because retraining is the only fix.
+
+**The RAG hallucination — an answer from stale or mis-scoped context.** A retrieval-augmented system — the pattern behind most enterprise copilots — retrieves documents or chunks and generates an answer grounded in them. When the retrieved context is stale, superseded, mis-scoped, or wrongly permissioned, the model grounds its answer in the wrong evidence and presents it with full fluency. Meridian's adviser copilot retrieves a product research note to answer a suitability question — but the note was superseded three months ago, and nothing in the vector index recorded that it had been. The answer is confident, well-written, and based on withdrawn guidance. This is the archetype the current chapters barely touch and Chapter 8A is added to address, because in 2026 the data most AI consumes is not tables but *documents and embeddings*, and none of the failure modes above are structural until you govern unstructured context too.
+
+**The agent action — a decision taken on a mis-defined field.** The most consequential archetype, because the AI does not merely answer; it *acts*. An agent reads a field, reasons over it, and takes an action — approves, prices, routes, blocks — at machine speed, with no human between the reading and the consequence. When the field's meaning has drifted, the action is wrong and it is already done. Meridian's copilot, asked whether a portfolio is suitable, reads `em_exposure_pct` under the wrong divisional definition and tells an adviser a breach is within tolerance — and the adviser, trusting it, acts. The Okonkwo scene that opens Part II is exactly this archetype. As agents move from answering to acting — the trajectory of the epilogue — this becomes the dominant risk, because the loop that used to contain errors (a human reading a dashboard, raising a ticket) is gone.
+
+Three shapes, one root. In each, the data was not *dirty* — it was complete, typed, fresh, and passing every check. What it lacked was *bound, machine-readable context*: the definition, the currency, the scope, the lawful basis that a human consumer would have supplied and a machine consumer cannot. The rest of the book is organised around producing exactly that context, and each of these three archetypes is defused by a specific later part — the training contradiction by binding and modelling (Parts II, IV), the RAG hallucination by governing unstructured context (Chapter 8A), the agent action by evidence and certification at the point of consumption (Part V).
+
 ## Meet Meridian
 
 To keep this concrete rather than abstract, this book follows one organisation through the whole arc of the problem and its solution. **Meridian Financial** is a mid-sized wealth and asset manager — the kind of firm that is regulated enough for mistakes to be expensive, large enough to have a sprawling estate, and ambitious enough to be putting AI into production right now. It runs a retail division serving mass-affluent clients and an institutional division serving private and corporate ones. It has decades of accumulated data across custodians, a CRM, a billing system, and a settlement mainframe nobody wants to touch. And it has just put two AI systems on the critical path: an adviser copilot that answers relationship managers' questions about client portfolios, and a suitability-and-eligibility model heading toward its first review by the model-risk committee.
 
 Meridian is not special. Its situation is the situation of nearly every enterprise putting AI into production: good people, real data, genuine investment — and a foundation built for a human consumer now being asked to serve a machine one. Over the chapters ahead you will watch Meridian's copilot give a confident, wrong answer about a client's portfolio because a definition drifted two pipelines upstream, and you will watch its model get paused by a committee not because the data was bad but because the data could not produce evidence about itself. Both failures are versions of the sixty-per-cent statistic, made specific. Both are entirely preventable. The rest of the book is, in effect, the story of Meridian preventing them.
+
+### The Meridian dossier
+
+Because Meridian recurs in every chapter, it is worth one reference spread you can flip back to — the estate, the systems, the AI, and the people.
+
+**The firm.** A mid-sized wealth and asset manager, UK-headquartered and regulated by the FCA and PRA. Two divisions: **Retail** (mass-affluent clients, standardised products) and **Institutional** (private and corporate clients, bespoke mandates). The two divisions classify some things differently — most consequentially, whether frontier markets count as "emerging" — and that divergence is the seed of the book's running error.
+
+**The estate (the sediment of Chapter 1, in one firm).** A settlement **mainframe** nobody migrates; a decade-old cloud **data warehouse** of curated marts; an **Iceberg lakehouse** half the domains have moved to; source systems including two **custodians**, a **CRM**, a **billing** system, and market-data feeds; a **feature store** and a **vector index** feeding the AI layer; governance tooling (a **catalogue**, a **quality platform**) that this book will reframe from source-of-truth to consumer.
+
+**The two AI systems on the critical path.**
+- The **adviser copilot** — a retrieval-augmented assistant that answers relationship managers' questions about client portfolios (suitability, exposure, performance). It reads both structured holdings data and unstructured research notes. It is the *RAG* and *agent-action* archetypes waiting to happen.
+- The **suitability-and-eligibility model** — a supervised model scoring whether a portfolio suits a client and whether a client qualifies for a product, heading toward model-risk review. It is the *training-contradiction* archetype waiting to happen.
+
+**The cast.**
+- **Maya Osei** — data product owner for the Client domain; owns `client_holdings` and the suitability context. The book's protagonist; her funded authority (Chapter 20) is why the discipline holds.
+- **Tom** — head of the data-quality programme; award-winning, and about to discover his instrument was built for the wrong consumer (Chapter 19).
+- **Helena** — ran the £400k enterprise-catalogue programme; about to be asked a question her catalogue cannot answer (Chapters 11, 19).
+- **Nadia** — model-validation lead; the person in the room when the awkward, joined question of quality-and-lineage lands (Chapter 19).
+
+Keep this spread bookmarked. Every technical move in the book lands on one of these systems, and every human failure lands on one of these people.
 
 ## Why your current data-quality setup will not save you
 
@@ -74,11 +106,53 @@ Because four abstract moves can feel like a lot to hold at once, it helps to hav
 
 Most organisations, honestly assessed, sit at Level 0 or 1. That is not a failure; it is a starting point. The work of this book is to take one data product from Level 0 to Level 3 deliberately and provably, and then to show how that scales. Part II moves a product from Level 0 toward Level 2 by binding and modelling its context. Part III makes that context active. Part IV packages it and lights up the first AI consumer, reaching Level 3. Part V proves it and points the way to Level 4. The ladder is how you will know the moves are working: not by faith, but by a product that can demonstrably do more than it could a chapter ago.
 
+### The map: four moves against five levels
+
+The four moves and the five-level ladder are two views of the same journey, and it helps to hold them as a single map. Read the moves along the top and the levels up the side, and each part of the book is the cell where a move lifts a product to the next level:
+
+| Move | Part | Does what | Takes a product to |
+|------|------|-----------|--------------------|
+| **Bind** | II | Attaches context to data as one co-versioned unit (the capsule); models it | Level 1 → 2 (Defined → Modelled) |
+| **Automate** | III | Makes the bound context versioned, tested, event-driven, active | Level 2 → 3 (Modelled → Connected) |
+| **Package** | IV | Assembles context into a product an agent can reason over | reaches Level 3, live AI consumer |
+| **Prove** | V | Turns packaged context into certified, audit-surviving evidence | Level 3 → 4 (Connected → Intelligent) |
+
+Every chapter from here announces, in its header, which move it is making and which rungs it is crossing — so that at any point you can locate a technique on this map and know what it is *for*. Bind, automate, package, prove; Flat, Defined, Modelled, Connected, Intelligent. Two axes, one climb.
+
+### Ten questions, asked now
+
+Part V builds a full certification model, but its heart is ten questions an auditor (or an AI workload) will eventually ask of any data product feeding a high-stakes AI use. It is worth scoring your own most important product against them *today* — 0 (no answer), 1 (answer in a week), 2 (answer from a query, in the room) — because the gap you find now is the backlog the rest of the book clears, and the exercise gives the argument a personal stake.
+
+1. Who *owns* this product — a named person with budget and decision rights?
+2. Is each field's *meaning* queryable as code, under a stated definition?
+3. Is its *quality* contracted to your specific use, not just an average score?
+4. Can you *trace* one value end-to-end, with business meaning intact?
+5. Can you retrieve its quality and lineage *as they stood on a past date*?
+6. Is the *lawful basis* for each use enforced at runtime, not filed in a policy?
+7. Do you know every *consumer* downstream, including AI ones?
+8. Will a *breaking change* notify those consumers before it ships?
+9. Is the product *certified* for this use, by someone who signed off?
+10. Would degradation be *detected and acted on* automatically, or discovered in an incident?
+
+A mature product scores in the high teens. Most, honestly assessed, score below ten. That number is not a verdict; it is a starting line, and every part of this book raises it. (The full instrument is Appendix D.)
+
 ## The deadline that removes the option to wait
 
 There is one more reason this is urgent now rather than eventually, and it is not competitive pressure, though that is real. It is regulation, and it has a date on it. The EU AI Act becomes broadly operational on 2 August 2026, with high-risk AI systems — credit scoring, eligibility, hiring, medical diagnostics, the exact territory Meridian's suitability model lives in — required to meet comprehensive obligations around data governance, transparency, traceability, and human oversight, with penalties scaling into the tens of millions of euros or a percentage of global turnover. The UK takes a different route, with the FCA, PRA, and ICO leaning on existing rulebooks rather than a single statute, and other jurisdictions are converging on the same questions from their own directions. The instruments look nothing alike. Read enough of them and the same handful of questions keep surfacing, and they are questions about your data layer, not your models: where did the data come from, was it fit for the purpose, can you trace what the model did, who is accountable, and how would you know if any of it had quietly shifted.
 
-What the regulators have added is a deadline. The evidence these regimes demand either exists when you are asked for it or it does not, because — as Meridian's model-risk committee will demonstrate in Chapter 7 — you cannot assemble it retrospectively. Gartner's observation that most governance initiatives fail for want of a crisis catalyst has, for AI-readiness, found its catalyst. The crisis is dated, and the date is close.
+The instruments differ in letter and agree in substance, which is easiest to see in one table. Different jurisdictions, different legal forms — and the same handful of data-layer questions underneath.
+
+| Instrument | Jurisdiction / scope | Data-layer questions it forces | Timing |
+|------------|----------------------|-------------------------------|--------|
+| **EU AI Act** | EU; high-risk AI systems | Training-data governance, traceability, transparency, human oversight, record-keeping | Main obligations phasing from Aug 2026 |
+| **FCA / PRA** (UK) | UK financial services | Governance, accountability (SM&CR), model risk, data quality for regulated decisions | In force, applied via existing rulebooks |
+| **BCBS 239** | Global systemically important banks | Risk-data aggregation, lineage, accuracy, completeness | In force (long-standing) |
+| **OSFI E-23** | Canada; federally regulated financial institutions | Model risk management across the model lifecycle, incl. data | Effective 2027 |
+| **MAS FEAT / guidance** | Singapore financial sector | Fairness, ethics, accountability, transparency of data and models | In force (guidance) |
+| **NIST AI RMF** | US; voluntary framework | Data provenance, validity, documentation, measurement | Published; widely referenced |
+| **ISO/IEC 42001** | International; AI management systems | Auditable AI governance, incl. data controls | Published; certification emerging |
+
+Read down the "questions" column and the point of the whole book is visible in a regulatory register: *where did the data come from, was it fit for the purpose, can you trace what the model did, who is accountable, and how would you know if it had shifted.* These are the six evidence surfaces of Chapter 17, arriving as law. What the regulators have added is a deadline. The evidence these regimes demand either exists when you are asked for it or it does not, because — as Meridian's model-risk committee will demonstrate in Chapter 7 — you cannot assemble it retrospectively. Gartner's observation that most governance initiatives fail for want of a crisis catalyst has, for AI-readiness, found its catalyst. The crisis is dated, and the date is close.
 
 ## Turn the page
 

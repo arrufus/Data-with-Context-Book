@@ -193,6 +193,54 @@ Read that definition and notice what it is. It is not documentation *about* the 
 
 This single artifact *is* the capsule description: data, semantics, policy, contract, and lineage identifiers, defined and versioned together. Everything in the rest of Part II is about where this lives and how it runs.
 
+### The capsule and the Open Data Contract Standard
+
+A fair question at this point: is the capsule a bespoke format you now have to invent and maintain, or does it align with something the industry already agrees on? It aligns — and stating the alignment is what makes the spec credible rather than idiosyncratic. The **Open Data Contract Standard (ODCS)**, maintained by the Bitol project under the Linux Foundation AI & Data umbrella and originally contributed by PayPal, is a mature YAML specification for data contracts, and the seven capsule components map onto it almost one-to-one:
+
+| Capsule component | ODCS section |
+|-------------------|--------------|
+| Structural metadata | `schema` (objects, properties, types, keys) |
+| Semantic metadata | `description`, property `businessName`/`meaning`, custom semantic properties |
+| Quality expectations | `quality` (rules, dimensions, thresholds) |
+| Policy metadata | `roles`, `slaProperties`, custom classification/retention properties |
+| Provenance / lineage | referenced via custom properties + OpenLineage identifiers |
+| Operational contract | `slaProperties`, `support`, `team` |
+| Data payload | the physical dataset the contract governs |
+
+The book's position is simple: **a Data Capsule is an ODCS-compatible superset.** Where ODCS gives you a standard, tool-supported envelope for schema, quality, and SLAs, the capsule adds the insistence that *semantics and policy are first-class and co-versioned*, and that the whole thing is *bound to the data and deployed as one unit* rather than filed in a contract registry beside it. In practice, express your capsules as ODCS documents wherever the standard reaches, extend it with the semantic and policy richness the standard leaves open, and you get both interoperability and the full discipline. Appendix A gives the complete annotated spec with the ODCS mapping field by field. The point for now: adopting capsules does not mean abandoning standards; it means using a standard and refusing to stop where the standard currently stops.
+
+### Versioning: what semver means for data
+
+The `version: 4.1.0` at the top of the capsule is not decoration — it is a promise, and the promise only means something if everyone agrees what a version bump *signals*. Borrow semantic versioning from software, adapted to data:
+
+- **Major** (`3.x → 4.0`): a *breaking* change. A column removed or retyped, a primary-key change, or — the one teams forget — a *semantic* change: redefining what `em_exposure_pct` counts is a breaking change even though the schema is untouched, because every consumer's interpretation just broke. Major bumps require consumer sign-off and the 90-day notice the contract promises.
+- **Minor** (`4.0 → 4.1`): an *additive* change. A new nullable column, a new quality expectation, a widened-but-compatible type. Consumers on the old version keep working.
+- **Patch** (`4.1.0 → 4.1.1`): a *correction* that changes nothing about the interface — a fixed description, a corrected lineage reference, a tightened test that was always meant to hold.
+
+Watch it work across one real change history for `client_holdings`:
+
+| Version | Change | Bump | Consumer action |
+|---------|--------|------|-----------------|
+| 3.2.0 | baseline | — | — |
+| 3.3.0 | add nullable `esg_score` column | minor | none required |
+| 4.0.0 | **redefine `em_exposure_pct` to be division-aware** (the Okonkwo fix) | **major** | 90-day notice; copilot must adopt division-aware normalisation |
+| 4.1.0 | add `risk_review_date` completeness expectation to quality suite | minor | none required |
+| 4.1.1 | correct a wrong glossary reference on `asset_class` | patch | none |
+
+The 4.0.0 row is the important one: *the schema did not change, and it was still a breaking release,* because meaning changed. A versioning scheme that only tracks structure would have shipped the single most consequential change in the table's history as invisible. Capsule versioning tracks meaning as a first-class reason to bump, which is exactly what a semantic consumer like the copilot needs.
+
+### The capsule lifecycle
+
+A capsule is not born certified and does not live forever; it moves through a lifecycle with a gate at each transition, and naming the gates is what keeps the discipline honest.
+
+- **Draft** — the capsule exists in a branch; schema and semantics are being worked out. No consumer depends on it. *Gate to next:* owner review and a passing test suite.
+- **Review** — proposed for publication; the domain owner (Maya) and affected consumers review the contract, especially the semantics and policy. *Gate:* sign-off recorded in the PR.
+- **Published** — live, contracted, discoverable, consumable. Changes now follow the semver rules above. *Gate to next:* a decision to retire, triggered by falling usage or replacement.
+- **Deprecated** — still available but flagged; consumers are on notice to migrate, within the deprecation window the contract states (90 days at Meridian). *Gate:* all registered consumers migrated or acknowledged.
+- **Retired** — removed from production; the capsule and its history are archived for audit but no longer served.
+
+The lifecycle matters because it is the answer to the lake's "permanent hoarding" from Chapter 2: a product that is *evaluated and deprecated when usage falls* rather than accumulated forever. It is also what makes the "who can I still depend on?" question answerable — a consumer knows that a Published capsule carries the full guarantee and a Deprecated one is on a clock.
+
 ## What you get the moment data and metadata are bound
 
 Binding is not an aesthetic preference. It produces specific, compounding benefits, and it is worth being concrete about them because they are what you will use to justify the work.
@@ -208,6 +256,61 @@ Binding is not an aesthetic preference. It produces specific, compounding benefi
 **The platform becomes resilient to its own tooling.** If the catalog is down or the documentation portal is stale, the dataset remains interpretable, because its essential context lives with it. The catalog becomes an index over authoritative metadata rather than a fragile single point of truth.
 
 **And the data becomes AI-ready in the only sense that matters.** Tools and agents can inspect schema, constraints, and policy directly from the capsule — to propose mappings, check compatibility, generate tests, or detect a policy violation *before* execution. AI-ready data, as we will argue at length, is not clean data. It is data that can produce evidence about itself on demand. A capsule is the unit that can.
+
+## A smaller capsule, so the discipline doesn't look heavy
+
+The `client_holdings` capsule is a large fact table, and a reader could reasonably conclude that capsules are only worth it for big, high-traffic datasets. They are not, and the corrective is to see the discipline scaled *down* to something small — a piece of reference data — where the payoff is just as real and the artefact is a fraction of the size.
+
+Meridian's asset-class taxonomy is exactly the kind of small, stable, high-reuse dataset that quietly underpins everything and is almost never governed. It is a lookup: a few dozen rows mapping an asset-class code to a name, a parent class, and — critically — the emerging-market flag that the whole suitability question turns on. As a capsule it is tiny:
+
+```yaml
+data_product: asset_class_taxonomy
+version: 3.0.0
+owners:
+  domain: reference_data
+  product_owner: ref-data-owner@meridian.example
+datasets:
+  - name: dim_asset_class
+    format: iceberg
+    grain: "one row per asset_class_code (current version)"
+    classification: internal
+    schema:
+      primary_key: [asset_class_code]
+      fields:
+        - { name: asset_class_code, type: string, description: "Meridian taxonomy code, e.g. EQ-EM" }
+        - { name: name, type: string, description: "Human-readable class name" }
+        - { name: parent_code, type: string, description: "Parent class; null at root" }
+        - { name: is_emerging_market, type: boolean, description: "EM flag — see semantics" }
+semantics:
+  is_emerging_market:
+    definition_ref: "glossary://wealth/emerging_markets"
+    note: >
+      Base classification. Division-dependent frontier-market inclusion is
+      applied downstream in client_holdings, NOT here. This flag is the
+      institutional (frontier-inclusive) base; retail derives from it.
+quality:
+  expectations:
+    - "asset_class_code unique and not null"
+    - "parent_code references an existing asset_class_code or is null"
+    - "no orphan cycles in parent hierarchy"
+contracts:
+  freshness_sla: 24_hours
+  breaking_change_policy: semver_major
+```
+
+Notice how much this small capsule earns. It pins down, in one governed place, the *base* EM classification that `client_holdings` depends on — and it records, in its semantics, the exact relationship (this is the institutional base; retail derives from it) that, left unstated, produced the Okonkwo error. Reference data is where meaning is *defined* before it is *used*, so a governed reference capsule prevents drift at the source rather than catching it downstream. The lesson: capsules are not a heavyweight treatment reserved for big tables; they are the unit of governed meaning at any size, and the small ones are often the highest-leverage because everything else depends on them.
+
+## Three capsule anti-patterns
+
+Naming the ways capsules go wrong is as useful as defining the capsule, because each anti-pattern is a plausible-looking failure that a well-intentioned team will drift into.
+
+**The documentation capsule.** A YAML file exists, it has all seven sections, it looks like a capsule — and *nothing enforces it.* The quality expectations do not gate deployment; the semantics are not read by any consumer; the version is bumped by hand when someone remembers. This is the catalogue disease of Chapter 3 in a new file format: a description beside the data, drifting from it. The tell is that you could change the data without the capsule failing anything. A capsule that cannot fail a build is documentation wearing a capsule's clothes.
+
+**The kitchen-sink capsule.** Every conceivable piece of metadata is stuffed in — every downstream note, every historical caveat, every tangential policy — until the capsule is so large that no one maintains it and its signal drowns in its own completeness. The hot/cold distinction from the next chapter is the discipline that prevents this: embed what a consumer needs *now*, reference the rest. A capsule is a contract, not an archive.
+
+**The orphan capsule.** A beautifully specified capsule with no named owner and no registered consumer — governance performed for its own sake. With no consumer, no one notices when it drifts; with no owner, no one can fix it if they did. This is the failure Chapter 19 returns to as the ownership surface: a perfect description of a thing nobody answers for is still an orphan. Every capsule should be able to name, from day one, the person who owns it and at least one consumer who would notice if it broke.
+
+The three share a root: a capsule is only real when it is *enforced, bounded, and owned.* A YAML file is necessary and nowhere near sufficient.
 
 ## Why it is still hard
 

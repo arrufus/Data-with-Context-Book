@@ -29,6 +29,17 @@ The contrast is stark enough to tabulate:
 
 Static metadata tells you what the data was *supposed* to be. Active metadata tells your ecosystem what is happening *now* — and what to do about it. The conceptual move that matters most, the one that changes the economics of data management entirely, is this: **metadata moves from the documentation layer to the control plane of the data estate.** It stops being a record the platform keeps and becomes a system the platform runs on.
 
+## The architecture of the active layer
+
+"Metadata that acts" needs a place to act *from*, and the reference architecture is simpler than the phrase suggests: four parts, each doing one job.
+
+- An **event bus** carries metadata events — schema changes, quality results, SLA breaches, access requests, classification events — emitted by the pipelines and platforms (the OpenLineage and dbt events of Chapter 10, plus platform change-feeds).
+- A **rules engine** evaluates each event against policy: *is this a breaking change? does this field look like PII? has this SLA failed?* The rules are the policy-as-code of Chapter 9, now evaluated at runtime rather than at deploy time.
+- **Action executors** carry out the response — halt a pipeline, apply a tag, update a trust score, open a ticket, post to Slack, downgrade a certification.
+- An **audit log** records every event, decision, and action immutably, because — as Part V insists — an action nobody can reconstruct is not governance, and the log *is* the evidence that a control fired.
+
+On build-versus-buy: you do not usually build this from scratch. Three routes exist. A **framework** like DataHub Actions gives you the bus-plus-rules-plus-executor pattern out of the box, event-driven over the metadata graph. A **warehouse-native** approach uses the platform's own streams and tasks (Snowflake streams/tasks, Databricks jobs) for a subset of behaviours without new infrastructure. Or a **custom** layer on Kafka plus a rules service, for organisations that need behaviours the frameworks do not cover. Meridian runs DataHub Actions for the cross-platform behaviours and warehouse-native tasks for the platform-local ones — the same "open index, native enforcement" split as the rest of the stack. The point is that the architecture is small and mostly assembled, not a moonshot; the hard part, as ever, is the operating model, not the wiring.
+
 ## What that looks like in practice
 
 Abstractions about control planes are easy to nod along to and hard to act on, so here is active metadata doing four concrete jobs, each one a thing Meridian could not do with a passive catalogue.
@@ -42,6 +53,41 @@ Abstractions about control planes are easy to nod along to and hard to act on, s
 **Auto-classifying sensitive data.** An engineer adds a field to a pipeline. Pattern-matching and classification models detect that it probably contains a national-identity number. The metadata layer flags it, applies a provisional sensitivity tag, restricts access to authorised roles, and queues it for steward confirmation — in hours, automatically, rather than in a quarterly manual data-mapping exercise that would have left the field exposed in the meantime. For a regulated firm, the gap between "exposed for three months until the next audit" and "protected within the hour" is the gap between a near-miss and a breach notification.
 
 Notice the common shape across all four: an *event* (schema change, SLA failure, agent query, new field) triggers an automatic *action* (halt, rescore, contextualise, classify-and-protect), with a human pulled in only when judgement is genuinely required. This is the write-once-enforce-forever pattern of Chapter 10's tag-based masking, generalised to the whole estate. Governance turns from a meeting into a system behaviour.
+
+### Designing the trust score
+
+"Dynamic trust scoring" is asserted easily and specified rarely, so here is how Meridian actually computes it, because a trust score consumers (and agents) rely on has to be a defined function, not a vibe. The score for a product is a weighted combination of signals the active layer already has:
+
+```
+trust = 0.30 * freshness_ok        # within SLA now?
+      + 0.30 * quality_pass_rate   # fraction of bound expectations passing
+      + 0.20 * ownership_current   # named owner, reviewed within cadence?
+      + 0.20 * incident_recency    # decays after a recent incident, recovers over time
+```
+
+Two design choices matter. The score **decays** on a bad event (an SLA miss drops freshness to zero immediately; a recent incident suppresses `incident_recency`) and **recovers** gradually as the product runs clean — so trust reflects the product's *current* state and its recent track record, not a launch-day stamp. And the score is **exposed**, not just displayed: it is queryable by the retrieval filter and the certification pipeline, so a product that drops below threshold is automatically suppressed from certified workflows (the behaviour from the previous section) rather than merely showing amber on a dashboard. A trust score that lives only in a UI is the aggregate problem of Chapter 19 waiting to happen; a trust score that gates consumption is a control.
+
+### The agent-context API
+
+The most important integration in the book has, until now, been described only in prose: the call an AI agent makes to fetch certified context *before* it answers. Here it is on the wire. The copilot, before answering the net-outflows question, calls:
+
+```json
+// request
+GET /context/wealth.client_holdings
+// response
+{
+  "certification": { "level": 4, "approved_uses": ["adviser_copilot_retrieval"],
+                     "prohibited_uses": ["unsupervised_client_facing_advice"] },
+  "trust_score": 0.94,
+  "freshness": "ok",
+  "semantics": { "em_exposure_pct": { "division_dependent": true,
+                 "definition_ref": "glossary://wealth/emerging_markets" } },
+  "entitlement": { "caller_division": "retail", "may_query": true },
+  "as_of": "2026-06-30T08:15:00Z"
+}
+```
+
+The agent reads this *first*, and it changes what the agent does: it learns that `em_exposure_pct` is division-dependent (so it normalises), that the product is certified for its use and prohibited for another (so it adds the required human-review caveat), that trust is high and data is fresh (so it may proceed), and that the caller is entitled (so it answers). Strip this call out and the agent is back to guessing from column names — the Okonkwo failure. This endpoint is where active metadata and the AI consumer actually meet, and it is why "the platform feeds the agent certified context before it speaks" is a mechanism, not a slogan.
 
 ## The activation patterns
 
@@ -62,6 +108,19 @@ Several forces make active metadata urgent rather than aspirational, and they ar
 But there is a trap, and it is the same trap that swallows every promising capability, so it is worth naming flatly. The risk is to invest in *tooling* before investing in the *operating model*. Buying an active-metadata platform without changing how metadata ownership is assigned and enforced produces expensive automation that nobody trusts. Treating automation as a substitute for accountability — rather than an enabler of it — produces actions nobody owns. Generating alert volumes that overwhelm teams produces alerts everybody ignores. Confusing a lineage diagram with lineage-driven impact management produces pretty pictures and unmanaged risk. And assuming an AI agent can infer business context from raw schema alone produces exactly the confident, wrong answers active metadata exists to prevent.
 
 The one-sentence antidote: **active metadata does not remove governance responsibility; it makes responsibility executable.** Helena's catalogue does not disappear — it is reframed, as Chapter 13 will detail, from the centre of gravity into one node in a metadata ecosystem that flows rather than rests. Tom's quality programme does not disappear — its rules become the gates that fire. The accountability stays human; the enforcement becomes automatic. Get that relationship backward — automation instead of accountability — and you have built a faster way to do the wrong thing.
+
+## Alert economics, and a 30-day switch-on
+
+The trap named above — alert volumes that overwhelm teams and get ignored — is worth treating as an engineering problem with a solution, because it is the most common way active metadata dies in practice. Automated actions have precision and recall like any classifier, and a rules engine tuned for recall (catch everything) at the expense of precision (few false alarms) produces alert fatigue, after which every alert is ignored and the system is worse than useless. The discipline is to **tier actions by blast radius** rather than firing every rule at the same volume:
+
+- **Observe** — record and score, no notification. Most events.
+- **Warn** — notify the owner asynchronously; no work stopped. Distribution drift, minor SLA wobble.
+- **Quarantine** — hold the data in an audit zone, notify, await review. Failed contract, suspected bad batch.
+- **Halt** — stop the pipeline, page the owner. Breaking schema change, PII exposure, certified-product failure.
+
+Only the top two tiers interrupt a human, and only the top tier pages. This keeps the signal-to-noise ratio high enough that a `halt` alert is *believed*, which is the whole point — an alert nobody trusts is decorative.
+
+And because turning all of this on at once *guarantees* a flood, Meridian's runbook for the first 30 days is deliberately staged. **Week 1:** observe-only — the active layer runs, scores, and logs, but takes no interrupting action, so the team calibrates against real volumes. **Week 2:** enable `warn` on the two or three highest-value event types (schema change, SLA breach) for one pilot domain. **Week 3:** enable `quarantine`/`halt` on that domain's tier-1 products, with the owner on notice. **Week 4:** review the precision of every action taken, tune the rules, then expand to a second domain. The sequencing is the same lesson as everywhere: prove value on a small surface, tune, expand — never boil the ocean, least of all with a system whose failure mode is *too many true-but-ignored alarms*.
 
 ## The corner Meridian has turned
 

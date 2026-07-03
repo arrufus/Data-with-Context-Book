@@ -65,6 +65,96 @@ Use **denormalised wide tables** (the "one big table" pattern) when the consumer
 
 The decision rule is short: **humans exploring → star schema; machines and pipelines consuming → wide table; mixed audience → star as canonical, wide as a materialised convenience.** A pragmatic production split keeps a `Gold.Canonical` (dimensional, semantic-layer-friendly, used by BI), a `Gold.Serving` (denormalised, task-specific, used by ML, apps, and the copilot), and a short-lived `Gold.Sandbox` for experiments — so the source of truth stays clean while teams still get the "just give me one table" experience. Gold should change faster than Silver, because business questions change faster than source systems do.
 
+## The suitability domain, modelled in code
+
+The chapter has taught the *choices*; a reader building this needs to see the *models*. Here is Meridian's suitability domain across the layers, in enough code to lift.
+
+**Gold, dimensional (the canonical star).** The consumption model the copilot and the reports read is a star with a clear grain:
+
+```sql
+-- grain: one row per suitability assessment, per client, per assessment date
+CREATE TABLE gold.fact_suitability_assessment (
+    assessment_sk     BIGINT,         -- surrogate
+    client_sk         BIGINT,         -- FK -> dim_client
+    portfolio_sk      BIGINT,         -- FK -> dim_portfolio
+    risk_profile_sk   BIGINT,         -- FK -> dim_risk_profile
+    assessment_date   DATE   NOT NULL,
+    em_exposure_pct   DECIMAL(5,2),   -- division-normalised at build
+    breach_flag       BOOLEAN,
+    breach_margin_pct DECIMAL(5,2)
+) USING iceberg PARTITIONED BY (months(assessment_date));
+
+-- dim_client is SCD2: one row per client per validity period
+CREATE TABLE gold.dim_client (
+    client_sk       BIGINT,           -- surrogate (join key)
+    client_id       STRING,           -- natural/business key (lineage)
+    division        STRING,           -- retail | institutional
+    domicile        STRING,
+    effective_from  TIMESTAMP,
+    effective_to    TIMESTAMP,        -- null-high for current
+    is_current      BOOLEAN
+) USING iceberg;
+```
+
+Two disciplines from earlier in the chapter are visible in the DDL: every entity keeps *both* a surrogate (`client_sk`, for joins) and the natural key (`client_id`, for lineage and reconciliation); and `dim_client` is Type-2, carrying validity periods so a point-in-time join is possible.
+
+**Silver, Data Vault (multi-source integration).** Because client identity is assembled from a CRM, two custodians, and MDM, the Silver layer uses Data Vault, and a fragment makes the "hybrid" concrete:
+
+```sql
+CREATE TABLE silver.hub_client (
+    client_hk    BINARY,              -- hash of business key
+    client_id    STRING,              -- business key
+    load_ts      TIMESTAMP, source_system STRING);
+
+CREATE TABLE silver.link_client_portfolio (
+    link_hk BINARY, client_hk BINARY, portfolio_hk BINARY,
+    load_ts TIMESTAMP, source_system STRING);
+
+CREATE TABLE silver.sat_client_risk (      -- context + history
+    client_hk BINARY, risk_score INT, risk_review_date DATE,
+    load_ts TIMESTAMP, hash_diff BINARY,   -- change detection
+    source_system STRING);
+
+-- 3NF integration VIEW over the vault: clean entities for downstream teams
+CREATE VIEW silver.client AS
+SELECT h.client_id, s.risk_score, s.risk_review_date, s.source_system
+FROM silver.hub_client h
+JOIN silver.sat_client_risk s ON h.client_hk = s.client_hk
+WHERE s.load_ts = (SELECT max(load_ts) FROM silver.sat_client_risk x
+                   WHERE x.client_hk = h.client_hk);   -- current context
+```
+
+The vault absorbs source churn and audit history; the 3NF view over it means no downstream consumer — or agent — has to learn Data Vault to ask a question. That is the hybrid the chapter recommended, in twenty lines.
+
+**The SCD Type-2 MERGE.** History management is where 3NF-in-Silver actually costs effort, so here is the idempotent pattern that maintains `dim_client`:
+
+```sql
+MERGE INTO gold.dim_client t
+USING staged_client s ON t.client_id = s.client_id AND t.is_current
+WHEN MATCHED AND t.hash_diff <> s.hash_diff THEN      -- attributes changed
+  UPDATE SET t.effective_to = current_timestamp(), t.is_current = false
+WHEN NOT MATCHED THEN
+  INSERT (client_sk, client_id, division, domicile,
+          effective_from, effective_to, is_current)
+  VALUES (s.client_sk, s.client_id, s.division, s.domicile,
+          current_timestamp(), null, true);
+-- second pass inserts the new current row for changed clients
+```
+
+This closes the old row and opens a new one on change, which is exactly what lets the copilot do the *point-in-time* join Chapter 7's temporal-correctness discussion demanded — reading a client's division *as it was on the assessment date*, not as it is today.
+
+**Survivorship, made real.** The chapter said "decide which source wins, attribute by attribute, and write it down." Here is the artefact — Meridian's survivorship table for the client entity, signed by Maya:
+
+| Attribute | System of record | Rule when sources conflict |
+|-----------|------------------|----------------------------|
+| `client_id` | MDM | MDM golden record is authoritative |
+| `domicile` | Custodian | Custodian of record; CRM ignored |
+| `email` | CRM | Most-recently-updated CRM value |
+| `division` | Onboarding | Set at onboarding; change requires approval |
+| `risk_score` | Risk system | Latest completed assessment only |
+
+That table is the "Try this" of the original chapter, completed: the CRM-vs-custodian domicile conflict that could have produced another Okonkwo is *resolved in advance*, recorded, owned, and — because it lives in the capsule's semantics — enforceable rather than remembered.
+
 ## Modelling for the agent, specifically
 
 Everything above is sound modelling practice that predates the current AI moment. What the AI moment changes is the *consumer's tolerance for ambiguity*, and that has two concrete implications for how Meridian models.
@@ -72,6 +162,27 @@ Everything above is sound modelling practice that predates the current AI moment
 First, the **serving layer becomes a first-class product, not an afterthought.** When the adviser copilot consumes `suitability_serving`, that wide table is the interface the agent reasons over. It needs to carry — or bind, via its capsule — the governed definitions, the division-aware normalisation, and the prohibited-use flags, because the agent will not go and read a Confluence page to disambiguate. The model is the only context the agent has. A wide serving table without bound semantics is precisely the trap that produces confident wrong answers.
 
 Second, **the semantic layer is where the model stops being a set of tables and starts being a set of business concepts** — and it is the natural seam between Part II and Part III. A semantic layer (dbt's MetricFlow, LookML, or a dedicated tool) sits above Gold and maps physical tables to business concepts: "active client," "emerging-market exposure," "suitability breach," each with one governed definition and one calculation. Modelled well, it serves humans and agents from the same trusted concepts, so an analyst's "EM exposure" and the copilot's "EM exposure" are guaranteed to be the same thing. This is the foreshadow of the **context data product** that Part III builds: a base data product, plus an ontology of entities and relationships, plus a semantic layer of governed concepts, plus the knowledge graph and usage intelligence that make it consumable by reasoning systems. Modelling is where that stack gets its foundation. You cannot package context (Part III) that you have not first structured (Part II).
+
+## Designing the wide serving table
+
+The serving table the agent reads deserves its own design rules, because a wide table done carelessly is how a governed star quietly forks into an ungoverned duplicate. Meridian's rules for `Gold.Serving`:
+
+- **Column budget.** A serving table pre-joins what a caller would assemble, but not everything — a `suitability_serving` table with four hundred columns is a maintenance liability nobody reads. Cap it at the columns the consumer actually queries, and add on evidence of use, not on speculation.
+- **Derive, don't redefine.** Every metric in the serving table is *derived from the semantic layer's* governed definition, never re-implemented in the serving SQL. This is the guard against the metric-level drift the chapter warns about: `em_exposure` in `Gold.Serving` is the *same* calculation as everywhere else, materialised, not a second version.
+- **Update cadence and freshness contract.** The serving table states its own freshness SLA, and it is refreshed *from* the canonical models, so `Gold.Serving` can never be fresher-but-wrong than `Gold.Canonical`.
+- **Prevent canonical/serving drift.** A scheduled check reconciles a sample of serving-table values against the canonical star; a mismatch is an incident, not a rounding tolerance. The serving table is a *materialised convenience over the source of truth*, and the reconciliation is what keeps "convenience" from becoming "third conflicting definition."
+
+## A house style for naming
+
+Naming is not cosmetic — it is the first layer of semantics an agent or analyst meets, and inconsistent naming scales inconsistency as fast as AI can read it. Meridian's half-page standard, offered as a starting point (and feeding Appendix B):
+
+- **Layers by prefix/schema:** `bronze.`, `silver.`, `gold.` (canonical), `gold_serving.` — the layer is legible from the name.
+- **Entity tables** singular business nouns: `client`, `portfolio`, `holding`. **Facts** `fact_<event>`; **dimensions** `dim_<entity>`; **vault** `hub_/link_/sat_`.
+- **Keys:** `<entity>_sk` for surrogates, `<entity>_id` for natural keys — always both, never conflated.
+- **Booleans** prefixed `is_`/`has_`; **dates** suffixed `_date`, **timestamps** `_ts` (and stated timezone in the description — UTC by default).
+- **Division-dependent or otherwise ambiguous fields** carry a semantic reference in the capsule, and the ambiguity is named in the column description, never left to the reader.
+
+The rule behind the rules: a name should tell a consumer what layer it is in, what grain it has, and where its meaning is defined — so that the model is legible before anyone opens the documentation, because the agent will not open the documentation.
 
 ## Three rules that survive contact with production
 

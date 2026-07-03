@@ -160,6 +160,45 @@ hudi_options = {
 
 The pre-commit validator is the capsule's quality gate, enforced at the version boundary: if checks fail, the write is rejected and no bad data enters the table. The Hudi capsule is best understood not as a static table but as *a stream of validated state transitions* — each commit a checked step forward. The gotcha is operational: background table services like compaction and clustering can appear as large writes even when no new data arrives, so your freshness and volume monitoring must account for them.
 
+## Deploying a capsule: the CI pipeline
+
+Pattern 2 says "the definition in Git is the source of truth; the table is a deployment of it," and that sentence hides the mechanism that makes it real: a pipeline that turns a table-spec into a live table only if the change is safe. It is worth seeing, because the whole discipline rests on this pipeline existing and being un-bypassable. Here is the shape of Meridian's, deploying the `client_holdings` capsule:
+
+```yaml
+# .github/workflows/deploy-capsule.yml (abridged)
+on:
+  pull_request:
+    paths: ["table-specs/**", "contracts/**", "tests/**"]
+jobs:
+  validate-and-deploy:
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Lint & validate the spec against the capsule/ODCS schema
+      - run: capsule-cli validate table-specs/wealth/fact_client_holding.yaml
+
+      # 2. Diff against the live table; classify the change (semver)
+      - run: capsule-cli plan --spec table-specs/wealth/fact_client_holding.yaml
+        # emits: change_type = major | minor | patch
+
+      # 3. Contract compatibility: would this break a registered consumer?
+      - run: capsule-cli check-consumers --spec ... --contract contracts/fact_client_holding.yaml
+        # fails the build if a breaking change lacks consumer sign-off + notice
+
+      # 4. Run the bound quality suite against a staging snapshot
+      - run: dbt build --select fact_client_holding
+      - run: great_expectations checkpoint run fact_client_holding
+
+      # 5. Impact analysis via OpenLineage graph (what's downstream?)
+      - run: capsule-cli impact --dataset wealth.fact_client_holding
+
+      # 6. On merge to main only: apply DDL, promote snapshot, emit lineage
+      - if: github.ref == 'refs/heads/main'
+        run: capsule-cli apply --spec ... && capsule-cli publish
+```
+
+Read the stages in order and each is one of the guarantees the book keeps promising, made mechanical. Step 1 rejects a malformed capsule. Step 2 is where the semver classification of Chapter 5 is *computed*, not asserted — the tool diffs the spec against reality and decides whether this is major, minor, or patch. Step 3 is the guard that would have stopped the Okonkwo change: a redefinition of `em_exposure_pct` is a major change, and a major change that lacks consumer sign-off and the 90-day notice *fails the build here*, before it can reach production. Steps 4–5 gate on quality and surface the blast radius. Step 6 applies the change only from `main`, so the only path to production is through the pipeline — which is what makes "no console edits" enforceable rather than aspirational. This single file is why Pattern 2 is a rule and not a hope.
+
 ## Cross-cutting: contracts, testing, lineage
 
 Whichever format you choose, three concerns span all of them and deserve to be designed once.
@@ -169,6 +208,14 @@ Whichever format you choose, three concerns span all of them and deserve to be d
 **Testing is a deployment gate, not documentation.** Quality expectations are executable. Whether you use dbt tests, Great Expectations, Soda, or custom validators, the pattern is identical: tests live beside the table definition, run in CI/CD, and block promotion on failure. Observability then extends past pass/fail to freshness (time since last successful write), volume (record counts, file sizes), distribution (null rates, value ranges), and access patterns — most of which the table format exposes as statistics you can read without scanning the data.
 
 **Lineage connects versions to the jobs that made them.** Every format provides versioning; the work is linking each version to its producing job. OpenLineage has become the standard for this. When a Spark job writes an Iceberg snapshot, OpenLineage records the job, its inputs, and the output snapshot; stitch those events together and you have a provenance graph. Dataset identity here means the fully qualified table name *plus* the snapshot, version, or commit ID — so "where did this number come from?" traces from a query result back through snapshots to source jobs to upstream datasets. We will build this into a standards-based platform in Chapter 12; for now, note that the table format gives you the anchor and OpenLineage gives you the edges.
+
+## Table maintenance is capsule maintenance
+
+There is an operational dimension the capsule concept quietly depends on and that teams new to table formats routinely neglect: the background maintenance the format performs is not housekeeping *beside* the capsule — it *is* capsule maintenance, and getting it wrong quietly erodes the guarantees the capsule makes.
+
+**Compaction** rewrites many small files into fewer large ones. It changes no data and no schema, but it produces a new snapshot and a large write, so your freshness and volume monitoring must know to expect it or it will read as an anomaly. **Snapshot expiry** and **vacuum** delete old snapshots and unreferenced files to control storage — and this is where it bites the capsule, because *snapshot history is the substrate of time travel, and time travel is how you answer "what did this data look like on the day the model trained."* Set the retention window too short and you have optimised away the very evidence Chapter 7 and Part V depend on. Meridian's rule is explicit: snapshot retention on any capsule feeding a model or a regulated report is set to *at least* the audit horizon — years, not days — even though it costs storage, because the alternative is a paused model and no receipt. **Manifest and metadata files** are the table's own record of itself; a corrupted or mispruned manifest is a corrupted capsule, so these are backed up and monitored like the data they describe.
+
+The principle: the capsule's promises — reproducibility, time travel, auditability — are only as durable as the maintenance policy underneath them. A retention window is not an infrastructure setting; it is a *governance decision about how long your data can testify about its own past,* and it should be made by the owner with the audit horizon in view, not defaulted by whoever set up the table.
 
 ## Migrating what you already have
 
@@ -181,6 +228,35 @@ Meridian did not get to start clean, and neither will you. The realistic startin
 5. **Enforce and expand.** Once the first capsule works, deprecate direct access to the old file layout so consumers query the table, not the raw files. Then pick the next dataset and repeat.
 
 During migration you will have capsules and non-capsules side by side, and that is fine — not every dataset needs the treatment at once. A workable criterion for what gets promoted first: **if a dataset is consumed by more than one team, feeds a regulated report, or would cause real pain if it broke unexpectedly, it should become a capsule.** Internal scratch tables and exploratory datasets can wait.
+
+## A migration, as a two-week diary
+
+The five-step migration reads cleanly, so it is worth telling how Meridian's first one — wrapping the legacy `client_holdings` extract — actually went, because the friction is the instructive part and the recommendations promised the texture.
+
+*Week one, days 1–2.* Maya's team registered the existing Parquet as an Iceberg table in place — no data rewrite, minutes of work — and it felt anticlimactic, which is correct: the point of wrap-in-place is that nothing moves. *Days 3–4.* They moved the schema knowledge out of Glue and people's heads into the table spec, adding column comments and the ownership and classification properties. This surfaced the first surprise: two columns nobody could define, which turned out to be dead fields no consumer read — deleted, not documented. *Day 5.* Wrote the first four quality tests (uniqueness, non-null keys, the division-aware distribution check, referential integrity to `dim_client`) and immediately caught a real problem — the distribution check failed on exactly the institutional-basis rows that had caused Okonkwo, which was the moment the discipline paid for itself in front of the team.
+
+*Week two, days 6–7.* Wired the tests and the contract into CI (the pipeline above). *Day 8* was the hard one: a downstream analytics team was reading the *raw Parquet files directly*, bypassing the table entirely, and their weekly report broke when file layout changed under compaction. This is the migration's real work — not the wrap, but the *deprecation of direct file access*. They gave the team two weeks' notice, a view that matched the old shape, and a deadline. *Days 9–10.* Published the capsule, pointed the copilot and the reports at the table, and left the raw path readable-but-deprecated with a logged warning on access, to catch stragglers.
+
+The lesson Meridian drew, and the one to carry: the technical migration is a day; the *consumer* migration is the fortnight. Wrapping data in a table format is easy. Getting every consumer to depend on the *governed table* rather than the raw files underneath it is the actual change, and it is a change to people's habits, not to storage.
+
+## Choosing a catalog (it matters more than you expect)
+
+Chapter's earlier Iceberg note flagged that catalog choice matters; here is the comparison, because for an Iceberg or multi-engine shop the catalog decides which governance features the capsule can actually enforce. The table format gives you schema and snapshots; the *catalog* is what gives you tags, masking, and access control.
+
+| Catalog | Multi-engine | Tags / classification | Column masking / ABAC | Notes |
+|---------|:---:|:---:|:---:|-------|
+| Hive Metastore | ✓ | limited | ✗ | Ubiquitous, minimal governance |
+| AWS Glue | ✓ | ✓ (Lake Formation) | ✓ (Lake Formation) | Good on AWS; ties you to it |
+| Unity Catalog | Spark-centric | ✓ | ✓ | Rich governance; Databricks-centric |
+| Nessie | ✓ | via properties | ✗ | Git-like branching for data |
+| Polaris | ✓ | ✓ | emerging | Open Iceberg REST catalog |
+| Iceberg REST + engine | ✓ | via properties | engine-dependent | Maximum portability, least built-in governance |
+
+The rule of thumb: **choose the catalog for the governance features you need to enforce, not the format for them** — because the format is largely interchangeable and the catalog is where masking and access control actually live. Meridian runs Iceberg with a catalog that supports tag-based masking, because `client_id` masking is a policy the platform must enforce, not a convention the capsule merely declares.
+
+## What the discipline costs at 50 TB
+
+Honesty about cost keeps the discipline credible. Column statistics, constraints, and pre-commit validators are not free at scale. On a 50 TB capsule, computing full column statistics on every write is expensive, so Meridian samples for distribution checks and computes exact stats only on partitions touched by the write. Pre-commit validators add latency to each commit, which matters for the intraday Hudi feed and barely registers for the daily holdings snapshot — so the *depth* of validation is tiered to the write cadence. And CI table-deployment must stay fast enough that engineers do not route around it, which means running the heavy quality suite against a *sampled* staging snapshot in the PR and the full suite on a schedule. The governing principle mirrors the hot/cold split: spend validation effort in proportion to blast radius and cadence, so the discipline stays affordable and therefore stays used.
 
 ## Choosing between the three
 
