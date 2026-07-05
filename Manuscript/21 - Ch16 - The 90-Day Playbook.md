@@ -20,6 +20,25 @@ The third is **no consumer pull**: building a semantic layer nobody asked for, w
 
 The principle that defeats all three, and that underpins the entire plan: **start with a consumer problem, not a producer ambition.** Meridian has one waiting — the adviser copilot that got the Adeyemi question wrong.
 
+### The 90 days, week by week
+
+"A plan you can run on Monday" needs dates and owners, so here is the timeline as a table:
+
+| Weeks | Phase | Lead | Effort |
+|-------|-------|------|--------|
+| 1–2 | Domain selection, brief | Product owner (Maya) | light |
+| 3–5 | MVO: entities, relationships, rules | Modeller + 2–3 SMEs | heavy |
+| 6–8 | MVO review & sign-off; controlled vocabularies | Modeller + owner | medium |
+| 6–9 | Bootstrap graph from catalogue/lineage/glossary | Engineer | heavy |
+| 9 | First AI consumer querying the graph | Engineer + ML | medium |
+| 10–11 | Assemble 5 layers; semantic API; extend contract | Engineer + modeller | medium |
+| 11–12 | Wire into catalogue; three usage patterns | Engineer | medium |
+| 13 | Measure (4 metrics); value summary | Owner + analyst | light |
+
+### Who runs it, and what it costs
+
+The pilot team is small and the infrastructure cost is close to zero — the answer a sponsor is hoping for. Four part-to-full-time people: a **product owner** (accountable, ~0.3 FTE), an **engineer** (build, ~0.8), an **analyst/modeller** (the ontology and semantic work, ~0.6), and a **part-time steward** (governance checks, ~0.2). Infrastructure — Neo4j Community, an existing lakehouse, an open-source semantic layer — is near-zero at pilot scale; the recommendation to *not* procure a managed graph platform until value is proven is what keeps it that way. The number a sponsor asks for is therefore "a fraction of four people for a quarter, and essentially no new licences," against the value the day-90 summary will quantify.
+
 ## Days 1–15: Choosing the right domain
 
 The single most consequential decision is the first one: which domain to pilot. Get it wrong and the pilot either drowns in complexity or succeeds at something nobody cares about. Five criteria reliably predict a good starting point.
@@ -46,25 +65,6 @@ Success metric:    Ambiguity-resolution rate > 90%; copilot suitability
                    error rate down measurably vs raw-data baseline
 Out of scope:      Custodian ops, fees, settlement (adjacent, not needed)
 ```
-
-### The 90 days, week by week
-
-"A plan you can run on Monday" needs dates and owners, so here is the timeline as a table:
-
-| Weeks | Phase | Lead | Effort |
-|-------|-------|------|--------|
-| 1–2 | Domain selection, brief | Product owner (Maya) | light |
-| 3–5 | MVO: entities, relationships, rules | Modeller + 2–3 SMEs | heavy |
-| 6–8 | MVO review & sign-off; controlled vocabularies | Modeller + owner | medium |
-| 6–9 | Bootstrap graph from catalogue/lineage/glossary | Engineer | heavy |
-| 9 | First AI consumer querying the graph | Engineer + ML | medium |
-| 10–11 | Assemble 5 layers; semantic API; extend contract | Engineer + modeller | medium |
-| 11–12 | Wire into catalogue; three usage patterns | Engineer | medium |
-| 13 | Measure (4 metrics); value summary | Owner + analyst | light |
-
-### Who runs it, and what it costs
-
-The pilot team is small and the infrastructure cost is close to zero — the answer a sponsor is hoping for. Four part-to-full-time people: a **product owner** (accountable, ~0.3 FTE), an **engineer** (build, ~0.8), an **analyst/modeller** (the ontology and semantic work, ~0.6), and a **part-time steward** (governance checks, ~0.2). Infrastructure — Neo4j Community, an existing lakehouse, an open-source semantic layer — is near-zero at pilot scale; the recommendation to *not* procure a managed graph platform until value is proven is what keeps it that way. The number a sponsor asks for is therefore "a fraction of four people for a quarter, and essentially no new licences," against the value the day-90 summary will quantify.
 
 ## Days 15–40: The minimum viable ontology
 

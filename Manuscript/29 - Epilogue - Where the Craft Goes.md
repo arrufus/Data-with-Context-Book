@@ -53,6 +53,4 @@ The work is to make context inseparable from data. Start small. Pick one high-va
 - On agentic data engineering and the changing craft, the practitioner writing on the "death of traditional ETL," the AI-copilot data stack (Airflow + dbt + copilot), and the DORA research on delivery performance.
 - On the orders-of-AI framing, treat the electricity analogy as illustrative; the near-term claims (agent-built pipelines, the orchestrator role) are the ones to hold the book to.
 
----
 
-*End of the manuscript's narrative. The appendices that follow — the canonical Data Capsule specification, the metadata-as-code repository layout, the AI-readiness certification checklist, the maturity self-assessment, and the glossary — turn the argument into artefacts you can pick up and use on Monday.*
